@@ -138,3 +138,4 @@ def timeline(
         "has_more": has_more,
         "next_cursor": photos[-1].id if has_more and photos else None
     }
+
