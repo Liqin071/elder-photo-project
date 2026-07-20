@@ -47,7 +47,9 @@ app.include_router(auth_router)
 from api.elders import router as elders_router
 app.include_router(elders_router)
 from api.photos import router as photos_router
+from api.volunteer import router as volunteer_router
 app.include_router(photos_router)
+app.include_router(volunteer_router)
 
 UPLOAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
