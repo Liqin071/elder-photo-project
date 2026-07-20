@@ -483,10 +483,30 @@ def login(...):
 7. **`.value` 调用**：用 String 后检查所有 `.role.value`，改为 `.role`
 8. **relationship**：确保所有被引用的模型文件都存在于服务器
 9. **`__init__.py`**：完成后检查 `models/__init__.py` 是否导出了所有模型
+10. **模型字段必须匹配数据库**：先 `DESCRIBE table` 看实际列名，再写模型
+11. **API 字段名映射**：用 `_to_dict()` 函数在 API 层做字段映射，隔离 DB 列名和接口字段名
 
 ### 错误排查流程
-10. **前台启动看实时错误**：`python3 -m uvicorn app:app --host 0.0.0.0 --port 8000`
-11. **Python 直测绕过 API**：用 `python3 -c` 测试枚举值 → 数据库写入 → 逐层排查
-12. **日志记到文件**：`> /tmp/app.log 2>&1`，然后用 `tail` 查看
+12. **前台启动看实时错误**：`python3 -m uvicorn app:app --host 0.0.0.0 --port 8000`
+13. **Python 直测绕过 API**：用 `python3 -c` 测试枚举值 → 数据库写入 → 逐层排查
+14. **日志记到文件**：`> /tmp/app.log 2>&1`，然后用 `tail` 查看
+
+### curl 调用注意事项（2026-07-20 新增）
+15. **token 不要直接粘贴**：JWT 含 `.` 和 JWT 看起来没问题，但直接粘贴在 curl 里，bash 可能解析特殊字符。用环境变量：`TOKEN=$(...)` 然后 `-H "Authorization: Bearer $TOKEN"`
+16. **URL 中 `?` 要加引号**：`curl "http://host/api/elders?page=1"` 否则 bash 当成通配符
+
+### git 工作流（2026-07-20 新增）
+17. **git pull 冲突**：如果服务器有未跟踪文件与远程同名，先 `rm` 再 pull
+18. **每个里程碑打 tag**：`git tag v1.0-xxx -m "描述"` → `git push origin v1.0-xxx`
+19. **不要在生产服务器上编辑代码**：本地编辑 → git push → 服务器 git pull
+
+### 数据库迁移（2026-07-20 新增）
+20. **添加字段前先 DESCRIBE**：服务器可能和本地模型不同，先看实际表结构
+21. **ALTER TABLE 分条执行**：多条 ALTER 逐条执行比合并更安全
+22. **ENUM→VARCHAR 是安全的**：不会丢数据，只是放宽约束
+
+### 文件上传测试（2026-07-20 新增）
+23. **base64 生成测试图片**：`python3 -c "import base64; open('/tmp/test.jpg','wb').write(base64.b64decode('...'))"`
+24. **multipart/form-data**：用 `-F "file=@/tmp/test.jpg"` 而非 `-d`，注意字段名要和 API 的 `alias` 匹配
 
 遵循这些原则可以避免 90% 的部署问题！
