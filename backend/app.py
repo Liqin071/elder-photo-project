@@ -54,6 +54,8 @@ from api.timeline import router as timeline_router
 app.include_router(timeline_router)
 from api.comments import router as comments_router
 app.include_router(comments_router)
+from api.notifications import router as notifications_router
+app.include_router(notifications_router)
 
 UPLOAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
