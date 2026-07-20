@@ -65,10 +65,15 @@ async def upload_photo(
     with open(filepath, "wb") as f:
         f.write(contents)
 
-    img_w, img_h = None, None
+    img_w, img_h, thumb_name = None, None, None
     try:
         img = Image.open(BytesIO(contents))
         img_w, img_h = img.size
+        img.thumbnail((200, 200))
+        thumb_name = f"thumb_{filename}"
+        thumb_path = os.path.join(UPLOAD_DIR, "thumbs", thumb_name)
+        os.makedirs(os.path.dirname(thumb_path), exist_ok=True)
+        img.save(thumb_path, format=img.format or "JPEG")
     except:
         pass
 
@@ -76,6 +81,7 @@ async def upload_photo(
         elderly_id=elder_id,
         volunteer_id=user_id,
         original_path=filename,
+        thumbnail_path=f"thumbs/{thumb_name}" if thumb_name else None,
         note=note,
         file_size=len(contents),
         width=img_w,
@@ -89,7 +95,7 @@ async def upload_photo(
     return {
         "id": photo.id,
         "url": f"/uploads/{filename}",
-        "thumbnail_url": None,
+        "thumbnail_url": f"/uploads/thumbs/{thumb_name}" if thumb_name else None,
         "elder_id": photo.elderly_id,
         "uploader_id": photo.volunteer_id,
         "uploader_role": uploader_role,
