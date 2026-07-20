@@ -1,5 +1,5 @@
 """通知 API"""
-from fastapi import APIRouter, Depends, HTTPException, Query, Header
+from fastapi import APIRouter, Depends, Query, Header
 from sqlalchemy.orm import Session
 from typing import Optional
 import json
@@ -7,6 +7,7 @@ import json
 from models.database import SessionLocal
 from models.notification import Notification
 from utils.auth import verify_token
+from utils.exceptions import AppException, ERR_NOT_FOUND, ERR_AUTH_REQUIRED
 
 router = APIRouter(prefix="/api", tags=["通知"])
 
@@ -21,10 +22,10 @@ def get_db():
 
 def get_uid(authorization: str = Header(None)):
     if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="未登录")
+        raise AppException(ERR_AUTH_REQUIRED, "未登录或token已过期", 401)
     uid = verify_token(authorization.split(" ")[1])
     if not uid:
-        raise HTTPException(status_code=401, detail="token过期")
+        raise AppException(ERR_AUTH_REQUIRED, "未登录或token已过期", 401)
     return uid
 
 
@@ -90,7 +91,7 @@ def mark_read(
         Notification.user_id == uid
     ).first()
     if not n:
-        raise HTTPException(status_code=404, detail="不存在")
+        raise AppException(ERR_NOT_FOUND, "不存在", 404)
     n.is_read = True
     db.commit()
     return None

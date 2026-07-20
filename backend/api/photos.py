@@ -1,5 +1,5 @@
 """照片管理 API — 上传、查询、修改、删除"""
-from fastapi import APIRouter, Depends, HTTPException, Query, Header, UploadFile, File, Form
+from fastapi import APIRouter, Depends, Query, Header, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from typing import Optional
 import os
@@ -10,6 +10,7 @@ from models.database import SessionLocal
 from models.photo import Photo
 from models.elderly import Elderly
 from utils.auth import verify_token
+from utils.exceptions import AppException, ERR_FILE_TYPE, ERR_FILE_TOO_LARGE, ERR_ELDER_NOT_FOUND, ERR_NOT_FOUND, ERR_AUTH_REQUIRED
 
 router = APIRouter(prefix="/api", tags=["照片管理"])
 
@@ -30,11 +31,11 @@ def get_db():
 
 def get_current_user_id(authorization: str = Header(None)):
     if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="未登录或token已过期")
+        raise AppException(ERR_AUTH_REQUIRED, "未登录或token已过期", 401)
     token = authorization.split(" ")[1]
     user_id = verify_token(token)
     if not user_id:
-        raise HTTPException(status_code=401, detail="未登录或token已过期")
+        raise AppException(ERR_AUTH_REQUIRED, "未登录或token已过期", 401)
     return user_id
 
 
@@ -48,13 +49,13 @@ async def upload_photo(
     db: Session = Depends(get_db)
 ):
     if file.content_type not in ALLOWED_TYPES:
-        raise HTTPException(status_code=400, detail="文件类型不支持")
+        raise AppException(ERR_FILE_TYPE, "文件类型不支持", 400)
     contents = await file.read()
     if len(contents) > MAX_SIZE:
-        raise HTTPException(status_code=413, detail="超过20MB")
+        raise AppException(ERR_FILE_TOO_LARGE, "超过20MB", 413)
     elder = db.query(Elderly).filter(Elderly.id == elder_id).first()
     if not elder:
-        raise HTTPException(status_code=404, detail="老人不存在")
+        raise AppException(ERR_ELDER_NOT_FOUND, "老人不存在", 404)
 
     ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else "jpg"
     filename = f"{uuid.uuid4().hex}.{ext}"
@@ -135,7 +136,7 @@ def update_image(
 ):
     p = db.query(Photo).filter(Photo.id == image_id).first()
     if not p:
-        raise HTTPException(status_code=404, detail="资源不存在")
+        raise AppException(ERR_NOT_FOUND, "资源不存在", 404)
     if "note" in request:
         p.note = request["note"]
     db.commit()
@@ -150,7 +151,7 @@ def delete_image(
 ):
     p = db.query(Photo).filter(Photo.id == image_id).first()
     if not p:
-        raise HTTPException(status_code=404, detail="资源不存在")
+        raise AppException(ERR_NOT_FOUND, "资源不存在", 404)
     filepath = os.path.join(UPLOAD_DIR, p.original_path)
     if os.path.exists(filepath):
         os.remove(filepath)

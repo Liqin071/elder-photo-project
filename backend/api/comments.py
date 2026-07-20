@@ -1,5 +1,5 @@
 """评论 API"""
-from fastapi import APIRouter, Depends, HTTPException, Query, Header, UploadFile, File, Form
+from fastapi import APIRouter, Depends, Query, Header, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import Optional
@@ -9,6 +9,7 @@ import uuid
 from models.database import SessionLocal
 from models.comment import Comment
 from utils.auth import verify_token
+from utils.exceptions import AppException, ERR_NOT_FOUND, ERR_NO_PERMISSION, ERR_AUTH_REQUIRED
 
 router = APIRouter(prefix="/api", tags=["评论"])
 
@@ -26,10 +27,10 @@ def get_db():
 
 def get_uid(authorization: str = Header(None)):
     if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="未登录")
+        raise AppException(ERR_AUTH_REQUIRED, "未登录或token已过期", 401)
     uid = verify_token(authorization.split(" ")[1])
     if not uid:
-        raise HTTPException(status_code=401, detail="token过期")
+        raise AppException(ERR_AUTH_REQUIRED, "未登录或token已过期", 401)
     return uid
 
 
@@ -153,9 +154,9 @@ def delete_comment(
 ):
     c = db.query(Comment).filter(Comment.id == comment_id).first()
     if not c:
-        raise HTTPException(status_code=404, detail="不存在")
+        raise AppException(ERR_NOT_FOUND, "不存在", 404)
     if c.author_id != uid:
-        raise HTTPException(status_code=403, detail="无权限")
+        raise AppException(ERR_NO_PERMISSION, "无权限操作", 403)
     if c.voice_url:
         vp = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), c.voice_url.lstrip("/"))
         if os.path.exists(vp):

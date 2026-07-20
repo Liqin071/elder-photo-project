@@ -1,5 +1,5 @@
 """志愿者和家属专属接口"""
-from fastapi import APIRouter, Depends, HTTPException, Header
+from fastapi import APIRouter, Depends, Header
 from sqlalchemy.orm import Session
 from typing import Optional
 from datetime import datetime
@@ -9,6 +9,7 @@ from models.user import User
 from models.elderly import Elderly
 from models.photo import Photo
 from utils.auth import verify_token
+from utils.exceptions import AppException, ERR_AUTH_REQUIRED
 
 router = APIRouter(prefix="/api", tags=["志愿者/家属"])
 
@@ -24,11 +25,11 @@ def get_db():
 
 def get_current_user_id(authorization: str = Header(None)):
     if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="未登录")
+        raise AppException(ERR_AUTH_REQUIRED, "未登录或token已过期", 401)
     token = authorization.split(" ")[1]
     user_id = verify_token(token)
     if not user_id:
-        raise HTTPException(status_code=401, detail="未登录或token已过期")
+        raise AppException(ERR_AUTH_REQUIRED, "未登录或token已过期", 401)
     return user_id
 
 

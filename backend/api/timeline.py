@@ -1,5 +1,5 @@
 """时间线 API"""
-from fastapi import APIRouter, Depends, HTTPException, Query, Header
+from fastapi import APIRouter, Depends, Query, Header
 from sqlalchemy.orm import Session
 from sqlalchemy import func, extract
 from typing import Optional
@@ -9,6 +9,7 @@ from models.database import SessionLocal
 from models.photo import Photo
 from models.elderly import Elderly
 from utils.auth import verify_token
+from utils.exceptions import AppException, ERR_AUTH_REQUIRED
 
 router = APIRouter(prefix="/api", tags=["时间线"])
 
@@ -23,10 +24,10 @@ def get_db():
 
 def get_uid(authorization: str = Header(None)):
     if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="未登录")
+        raise AppException(ERR_AUTH_REQUIRED, "未登录或token已过期", 401)
     uid = verify_token(authorization.split(" ")[1])
     if not uid:
-        raise HTTPException(status_code=401, detail="token过期")
+        raise AppException(ERR_AUTH_REQUIRED, "未登录或token已过期", 401)
     return uid
 
 

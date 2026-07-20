@@ -1,5 +1,5 @@
 """老人管理 API"""
-from fastapi import APIRouter, Depends, HTTPException, Query, Header
+from fastapi import APIRouter, Depends, Query, Header
 from sqlalchemy.orm import Session
 from typing import Optional
 from datetime import datetime
@@ -8,6 +8,7 @@ from models.database import SessionLocal
 from models.user import User
 from models.elderly import Elderly
 from utils.auth import verify_token
+from utils.exceptions import AppException, ERR_NOT_FOUND, ERR_HAS_PHOTOS, ERR_AUTH_REQUIRED
 
 router = APIRouter(prefix="/api", tags=["老人管理"])
 
@@ -22,11 +23,11 @@ def get_db():
 
 def get_current_user_id(authorization: str = Header(None)):
     if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="未登录或token已过期")
+        raise AppException(ERR_AUTH_REQUIRED, "未登录或token已过期", 401)
     token = authorization.split(" ")[1]
     user_id = verify_token(token)
     if not user_id:
-        raise HTTPException(status_code=401, detail="未登录或token已过期")
+        raise AppException(ERR_AUTH_REQUIRED, "未登录或token已过期", 401)
     return user_id
 
 
@@ -74,7 +75,7 @@ def get_elder(
 ):
     e = db.query(Elderly).filter(Elderly.id == elder_id).first()
     if not e:
-        raise HTTPException(status_code=404, detail="资源不存在")
+        raise AppException(ERR_NOT_FOUND, "资源不存在", 404)
     return _elder_to_dict(e)
 
 
@@ -109,7 +110,7 @@ def update_elder(
 ):
     e = db.query(Elderly).filter(Elderly.id == elder_id).first()
     if not e:
-        raise HTTPException(status_code=404, detail="资源不存在")
+        raise AppException(ERR_NOT_FOUND, "资源不存在", 404)
     field_map = {
         "name": "name", "age": "age", "gender": "gender",
         "phone": "contact_info", "emergencyContact": "guardian_contact",
@@ -132,9 +133,9 @@ def delete_elder(
 ):
     e = db.query(Elderly).filter(Elderly.id == elder_id).first()
     if not e:
-        raise HTTPException(status_code=404, detail="资源不存在")
+        raise AppException(ERR_NOT_FOUND, "资源不存在", 404)
     if e.photos:
-        raise HTTPException(status_code=409, detail="有影像数据不能删")
+        raise AppException(ERR_HAS_PHOTOS, "有影像数据不能删", 409)
     db.delete(e)
     db.commit()
     return None

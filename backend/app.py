@@ -32,15 +32,15 @@ async def unified_response_middleware(request: Request, call_next):
 
 @app.exception_handler(HTTPException)
 async def custom_http_exception_handler(request: Request, exc: HTTPException):
-    error_map = {
-        400: 1003,
-        401: 1004,
-        403: 1005,
-        404: 2001,
-        409: 1010
-    }
-    code = error_map.get(exc.status_code, 5000)
-    return JSONResponse(content={"code": code, "message": exc.detail, "data": None})
+    from utils.exceptions import AppException
+    if isinstance(exc, AppException):
+        code = exc.biz_code
+    else:
+        code = 5000
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"code": code, "message": exc.detail, "data": None}
+    )
 
 from api.auth import router as auth_router
 app.include_router(auth_router)
