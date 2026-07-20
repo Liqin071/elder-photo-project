@@ -2,6 +2,7 @@
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 import sys, os, json
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -45,6 +46,12 @@ from api.auth import router as auth_router
 app.include_router(auth_router)
 from api.elders import router as elders_router
 app.include_router(elders_router)
+from api.photos import router as photos_router
+app.include_router(photos_router)
+
+UPLOAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads")
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 @app.get("/")
 def root():
