@@ -43,6 +43,8 @@ async def custom_http_exception_handler(request: Request, exc: HTTPException):
 
 from api.auth import router as auth_router
 app.include_router(auth_router)
+from api.elders import router as elders_router
+app.include_router(elders_router)
 
 @app.get("/")
 def root():

@@ -24,9 +24,9 @@ class User(Base):
     name = Column(String(100), nullable=True)
     avatar = Column(String(500), nullable=True)
     phone = Column(String(20), nullable=True)
-#    elderly_records = relationship("Elderly", back_populates="creator")
-#    photos = relationship("Photo", back_populates="volunteer")
-#    activities = relationship("Activity", back_populates="volunteer")
+    elderly_records = relationship("Elderly", back_populates="creator")
+    photos = relationship("Photo", back_populates="volunteer")
+    activities = relationship("Activity", back_populates="volunteer")
 
     def __repr__(self):
         return f"<User(id={self.id}, username={self.username}, role={self.role})>"
