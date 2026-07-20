@@ -1,0 +1,387 @@
+ 
+"""用户认证 API"""
+ 
+from fastapi import APIRouter, Depends, HTTPException, Header
+ 
+from sqlalchemy.orm import Session
+ 
+from pydantic import BaseModel, EmailStr
+from typing import Optional
+ 
+from models.database import SessionLocal
+ 
+from models.user import User, UserRole
+ 
+from utils.auth import get_password_hash, verify_password, create_access_token, verify_token, create_refresh_token, verify_refresh_token, create_reset_token, verify_reset_token
+ 
+from datetime import datetime, timedelta
+ 
+
+ 
+router = APIRouter(prefix="/api", tags=["auth"])
+ 
+
+ 
+def get_db():
+ 
+    db = SessionLocal()
+ 
+    try:
+ 
+        yield db
+ 
+    finally:
+ 
+        db.close()
+ 
+
+ 
+class UserRegister(BaseModel):
+ 
+    username: str
+ 
+    password: str
+ 
+    email: EmailStr
+ 
+    role: str = "VOLUNTEER"
+ 
+
+ 
+class UserLogin(BaseModel):
+ 
+    username: str
+ 
+    password: str
+ 
+
+ 
+class TokenResponse(BaseModel):
+    refresh_token: Optional[str] = None
+ 
+    access_token: str
+ 
+    token_type: str
+ 
+
+ 
+class ForgotPasswordRequest(BaseModel):
+ 
+    email: EmailStr
+ 
+
+ 
+class ResetPasswordRequest(BaseModel):
+ 
+    token: str
+ 
+    new_password: str
+ 
+
+ 
+@router.post("/register")
+ 
+def register(user: UserRegister, db: Session = Depends(get_db)):
+ 
+    db_user = db.query(User).filter(User.username == user.username).first()
+ 
+    if db_user:
+ 
+        raise HTTPException(status_code=400, detail="Username already registered")
+ 
+    new_user = User(
+ 
+        username=user.username,
+ 
+        password_hash=get_password_hash(user.password),
+ 
+        email=user.email,
+ 
+        role=UserRole(user.role)
+ 
+    )
+ 
+    db.add(new_user)
+ 
+    db.commit()
+ 
+    db.refresh(new_user)
+ 
+    return {"message": "User created successfully", "user_id": new_user.id}
+ 
+
+ 
+@router.post("/login", response_model=TokenResponse)
+ 
+def login(user: UserLogin, db: Session = Depends(get_db)):
+ 
+    db_user = db.query(User).filter(User.username == user.username).first()
+ 
+    if not db_user or not verify_password(user.password, db_user.password_hash):
+ 
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+ 
+    token = create_access_token({"sub": str(db_user.id)})
+ 
+    access_token = create_access_token({"sub": str(db_user.id)})
+    refresh_token = create_refresh_token({"sub": str(db_user.id)})
+    return {"access_token": access_token, "token_type": "bearer", "refresh_token": refresh_token}
+ 
+
+ 
+@router.get("/users/me")
+ 
+def get_current_user(authorization: str = Header(None), db: Session = Depends(get_db)):
+ 
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Invalid authorization header")
+    token = authorization.split(" ")[1]
+    user_id = verify_token(token)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    user = db.query(User).filter(User.id == user_id).first()
+ 
+    if not user:
+ 
+        raise HTTPException(status_code=404, detail="User not found")
+ 
+    return {
+ 
+        "id": user.id,
+ 
+        "username": user.username,
+ 
+        "email": user.email,
+ 
+        "role": user.role.value
+ 
+    }
+ 
+
+ 
+@router.post("/forgot-password")
+ 
+def forgot_password(request: ForgotPasswordRequest, db: Session = Depends(get_db)):
+ 
+    user = db.query(User).filter(User.email == request.email).first()
+ 
+    if not user:
+ 
+        raise HTTPException(status_code=404, detail="Email not found")
+ 
+    token = create_reset_token(user.id)
+ 
+    user.reset_token = token
+ 
+    user.reset_token_expires = datetime.utcnow() + timedelta(minutes=60)
+ 
+    db.commit()
+ 
+    return {"message": "Password reset token generated", "reset_token": token, "expires_in_minutes": 60}
+ 
+
+ 
+@router.post("/reset-password")
+ 
+def reset_password(request: ResetPasswordRequest, db: Session = Depends(get_db)):
+ 
+    user_id = verify_reset_token(request.token)
+ 
+    if not user_id:
+ 
+        raise HTTPException(status_code=400, detail="Invalid or expired token")
+ 
+    user = db.query(User).filter(User.id == user_id).first()
+ 
+    if not user:
+ 
+        raise HTTPException(status_code=404, detail="User not found")
+ 
+    if user.reset_token != request.token:
+ 
+        raise HTTPException(status_code=400, detail="Invalid token")
+ 
+    if user.reset_token_expires and user.reset_token_expires < datetime.utcnow():
+ 
+        raise HTTPException(status_code=400, detail="Token expired")
+ 
+    user.password_hash = get_password_hash(request.new_password)
+ 
+    user.reset_token = None
+ 
+    user.reset_token_expires = None
+ 
+    db.commit()
+ 
+    return {"message": "Password reset successfully"}
+ 
+ 
+
+ 
+class RefreshTokenRequest(BaseModel):
+ 
+    refresh_token: str
+ 
+
+ 
+@router.post("/refresh-token")
+ 
+def refresh_token(request: RefreshTokenRequest, db: Session = Depends(get_db)):
+ 
+    """刷新访问令牌"""
+ 
+    payload = verify_refresh_token(request.refresh_token)
+ 
+    if not payload:
+ 
+        raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
+ 
+    user_id = payload.get("sub")
+ 
+    user = db.query(User).filter(User.id == int(user_id)).first()
+ 
+    if not user:
+ 
+        raise HTTPException(status_code=404, detail="User not found")
+ 
+    new_access_token = create_access_token({"sub": user.username})
+ 
+    return {"access_token": new_access_token, "token_type": "bearer"}
+ 
+ 
+
+ 
+class RefreshTokenRequest(BaseModel):
+ 
+    refresh_token: str
+ 
+
+ 
+@router.post("/refresh-token")
+ 
+def refresh_token(request: RefreshTokenRequest, db: Session = Depends(get_db)):
+ 
+    """刷新访问令牌"""
+ 
+    payload = verify_refresh_token(request.refresh_token)
+ 
+    if not payload:
+ 
+        raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
+ 
+    user_id = payload.get("sub")
+ 
+    user = db.query(User).filter(User.id == int(user_id)).first()
+ 
+    if not user:
+ 
+        raise HTTPException(status_code=404, detail="User not found")
+ 
+    new_access_token = create_access_token({"sub": str(user.id)})
+ 
+    return {"access_token": new_access_token, "token_type": "bearer"}
+ 
+ 
+
+ 
+class UserUpdateRequest(BaseModel):
+ 
+    email: Optional[EmailStr] = None
+ 
+    role: Optional[str] = None
+ 
+
+ 
+@router.put("/users/me")
+ 
+def update_user(request: UserUpdateRequest, authorization: str = Header(None), db: Session = Depends(get_db)):
+ 
+    """更新当前用户信息"""
+ 
+    if not authorization or not authorization.startswith("Bearer "):
+ 
+        raise HTTPException(status_code=401, detail="Invalid authorization header")
+ 
+    token = authorization.split(" ")[1]
+ 
+    user_id = verify_token(token)
+ 
+    if not user_id:
+ 
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+ 
+    user = db.query(User).filter(User.id == user_id).first()
+ 
+    if not user:
+ 
+        raise HTTPException(status_code=404, detail="User not found")
+ 
+    if request.email is not None:
+ 
+        existing = db.query(User).filter(User.email == request.email, User.id != user_id).first()
+ 
+        if existing:
+ 
+            raise HTTPException(status_code=400, detail="Email already in use")
+ 
+        user.email = request.email
+ 
+    if request.role is not None:
+ 
+        user.role = UserRole(request.role)
+ 
+    db.commit()
+ 
+    db.refresh(user)
+ 
+    return {
+ 
+        "message": "User updated successfully",
+ 
+        "user": {
+ 
+            "id": user.id,
+ 
+            "username": user.username,
+ 
+            "email": user.email,
+ 
+            "role": user.role.value
+ 
+        }
+ 
+    }
+ 
+ 
+
+ 
+@router.delete("/users/me")
+ 
+def delete_user(authorization: str = Header(None), db: Session = Depends(get_db)):
+ 
+    """删除当前用户"""
+ 
+    if not authorization or not authorization.startswith("Bearer "):
+ 
+        raise HTTPException(status_code=401, detail="Invalid authorization header")
+ 
+    token = authorization.split(" ")[1]
+ 
+    user_id = verify_token(token)
+ 
+    if not user_id:
+ 
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+ 
+    user = db.query(User).filter(User.id == user_id).first()
+ 
+    if not user:
+ 
+        raise HTTPException(status_code=404, detail="User not found")
+ 
+    db.delete(user)
+ 
+    db.commit()
+ 
+    return {"message": "User deleted successfully"}
+ 
