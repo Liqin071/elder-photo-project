@@ -7,6 +7,8 @@ from models.database import SessionLocal
 from models.user import User, UserRole
 from utils.auth import get_password_hash, verify_password, create_access_token, create_refresh_token, verify_token, verify_refresh_token
 from utils.exceptions import AppException, ERR_AUTH_FAILED, ERR_AUTH_REQUIRED, ERR_USERNAME_EXISTS, ERR_PASSWORD_SHORT, ERR_NOT_FOUND
+import httpx
+import os
 from datetime import datetime
 
 router = APIRouter(prefix="/api", tags=["auth"])
@@ -136,3 +138,57 @@ def delete_user(authorization: str = Header(None), db: Session = Depends(get_db)
     db.delete(user)
     db.commit()
     return {"message": "User deleted successfully"}
+
+
+class WxLogin(BaseModel):
+    code: str
+    nickName: Optional[str] = None
+    avatarUrl: Optional[str] = None
+
+
+@router.post("/auth/wx-login")
+async def wx_login(data: WxLogin, db: Session = Depends(get_db)):
+    WX_APPID = os.getenv("WX_APPID", "")
+    WX_SECRET = os.getenv("WX_SECRET", "")
+    if not WX_APPID or not WX_SECRET:
+        raise AppException(5000, "微信登录未配置", 500)
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            "https://api.weixin.qq.com/sns/jscode2session",
+            params={
+                "appid": WX_APPID,
+                "secret": WX_SECRET,
+                "js_code": data.code,
+                "grant_type": "authorization_code"
+            }
+        )
+    wx_data = resp.json()
+    if "errcode" in wx_data and wx_data["errcode"] != 0:
+        raise AppException(5000, f"微信登录失败: {wx_data.get('errmsg', '')}", 400)
+    openid = wx_data["openid"]
+    user = db.query(User).filter(User.openid == openid).first()
+    if not user:
+        username = f"wx_{openid[-8:]}"
+        user = User(
+            username=username,
+            password_hash="",
+            role=UserRole("children"),
+            openid=openid,
+            name=data.nickName,
+            avatar=data.avatarUrl
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+    token = create_access_token(user.id, user.role)
+    return {
+        "token": token,
+        "user": {
+            "id": user.id,
+            "username": user.username,
+            "role": user.role,
+            "name": user.name,
+            "avatar": user.avatar,
+            "phone": user.phone
+        }
+    }
