@@ -38,6 +38,8 @@ def _elder_to_dict(e):
         "address": e.address, "avatar": e.avatar,
         "volunteer_id": e.created_by,
         "volunteer_name": e.creator.name if e.creator else None,
+        "children_ids": [c.id for c in e.children] if e.children else [],
+        "children_names": [c.name or c.username for c in e.children] if e.children else [],
         "image_count": len(e.photos) if e.photos else 0,
         "created_at": str(e.created_at), "updated_at": str(e.updated_at)
     }

@@ -2,6 +2,7 @@
 from sqlalchemy import Column, Integer, String, DateTime, Text, ForeignKey, func
 from sqlalchemy.orm import relationship
 from .database import Base
+from .elderly_child import elderly_child
 
 
 class Elderly(Base):
@@ -23,6 +24,7 @@ class Elderly(Base):
     creator = relationship("User", back_populates="elderly_records")
     photos = relationship("Photo", back_populates="elderly")
     activities = relationship("Activity", back_populates="elderly")
+    children = relationship("User", secondary=elderly_child, backref="parent_elders")
 
     def __repr__(self):
         return f"<Elderly(id={self.id}, name={self.name})>"

@@ -16,6 +16,9 @@ class Photo(Base):
     status = Column(String(20), default="original")
     ai_enhancement_type = Column(String(30), default="none")
     note = Column(Text, nullable=True)
+    file_size = Column(Integer, nullable=True)
+    width = Column(Integer, nullable=True)
+    height = Column(Integer, nullable=True)
     upload_time = Column(DateTime, server_default=func.now())
 
     elderly = relationship("Elderly", back_populates="photos")

@@ -5,6 +5,8 @@ from typing import Optional
 import os
 import uuid
 from datetime import datetime
+from io import BytesIO
+from PIL import Image
 
 from models.database import SessionLocal
 from models.photo import Photo
@@ -63,11 +65,21 @@ async def upload_photo(
     with open(filepath, "wb") as f:
         f.write(contents)
 
+    img_w, img_h = None, None
+    try:
+        img = Image.open(BytesIO(contents))
+        img_w, img_h = img.size
+    except:
+        pass
+
     photo = Photo(
         elderly_id=elder_id,
         volunteer_id=user_id,
         original_path=filename,
         note=note,
+        file_size=len(contents),
+        width=img_w,
+        height=img_h,
         upload_time=datetime.utcnow()
     )
     db.add(photo)
@@ -82,9 +94,9 @@ async def upload_photo(
         "uploader_id": photo.volunteer_id,
         "uploader_role": uploader_role,
         "note": photo.note,
-        "file_size": len(contents),
-        "width": None,
-        "height": None,
+        "file_size": photo.file_size,
+        "width": photo.width,
+        "height": photo.height,
         "format": ext,
         "created_at": str(photo.upload_time)
     }
@@ -119,7 +131,7 @@ def list_images(
             "elder_name": p.elderly.name if p.elderly else None,
             "uploader_id": p.volunteer_id,
             "uploader_name": p.volunteer.name if p.volunteer else None,
-            "uploader_role": None, "file_size": None, "width": None, "height": None,
+            "uploader_role": None, "file_size": p.file_size, "width": p.width, "height": p.height,
             "created_at": str(p.upload_time)
         } for p in photos],
         "total": total, "page": page, "page_size": page_size,
