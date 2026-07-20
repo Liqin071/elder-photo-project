@@ -47,8 +47,8 @@ app.include_router(auth_router)
 from api.elders import router as elders_router
 app.include_router(elders_router)
 from api.photos import router as photos_router
-app.include_router(photos_router)
 from api.volunteer import router as volunteer_router
+app.include_router(photos_router)
 app.include_router(volunteer_router)
 from api.timeline import router as timeline_router
 app.include_router(timeline_router)
