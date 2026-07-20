@@ -1,9 +1,5 @@
-*.pyc
 __pycache__/
 .env
 *.log
 nohup.out
 .venv/
-*.bak
-*.working
-*.working_v2
