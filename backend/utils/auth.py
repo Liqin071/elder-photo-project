@@ -1,162 +1,68 @@
- 
+"""认证工具函数"""
 import hashlib
- 
 import bcrypt
- 
+import jwt
 from datetime import datetime, timedelta
- 
-from typing import Optional
- 
-from jose import JWTError, jwt
- 
-import os
- 
-from dotenv import load_dotenv
- 
+from fastapi import HTTPException, Header
+from sqlalchemy.orm import Session
+from models.user import User
 
- 
-load_dotenv()
- 
+SECRET_KEY = "your-secret-key-here-change-in-production"
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_SECONDS = 7200
+REFRESH_TOKEN_EXPIRE_DAYS = 7
 
- 
-SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-here-change-in-production")
- 
-ALGORITHM = os.getenv("ALGORITHM", "HS256")
- 
-ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
- 
-REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "7"))
- 
-RESET_TOKEN_EXPIRE_MINUTES = int(os.getenv("RESET_TOKEN_EXPIRE_MINUTES", "60"))
- 
+def pre_hash_password(password):
+    return hashlib.sha256(password.encode()).hexdigest()
 
- 
 def get_password_hash(password):
- 
-    prehashed = hashlib.sha256(password.encode()).hexdigest()
- 
-    return bcrypt.hashpw(prehashed.encode(), bcrypt.gensalt()).decode()
- 
+    pre_hashed = pre_hash_password(password)
+    return bcrypt.hashpw(pre_hashed.encode(), bcrypt.gensalt()).decode()
 
- 
-def verify_password(plain, hashed):
- 
-    prehashed = hashlib.sha256(plain.encode()).hexdigest()
- 
-    return bcrypt.checkpw(prehashed.encode(), hashed.encode())
- 
+def verify_password(password, hashed_password):
+    pre_hashed = pre_hash_password(password)
+    return bcrypt.checkpw(pre_hashed.encode(), hashed_password.encode())
 
- 
-def create_access_token(data, expires_delta=None):
- 
-    to_encode = data.copy()
- 
-    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
- 
-    to_encode.update({"exp": expire, "type": "access", "iat": datetime.utcnow()})
- 
+def create_access_token(user_id, user_role):
+    to_encode = {"userId": user_id, "role": user_role, "type": "access", "iat": datetime.utcnow()}
+    expire = datetime.utcnow() + timedelta(seconds=ACCESS_TOKEN_EXPIRE_SECONDS)
+    to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
- 
 
- 
-def create_refresh_token(data):
- 
-    to_encode = data.copy()
- 
+def create_refresh_token(user_id):
+    to_encode = {"userId": user_id, "type": "refresh", "iat": datetime.utcnow()}
     expire = datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
- 
-    to_encode.update({"exp": expire, "type": "refresh", "iat": datetime.utcnow()})
- 
+    to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
- 
 
- 
 def verify_token(token):
- 
     try:
- 
-        return int(jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM]).get("sub"))
- 
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        if payload.get("type") != "access":
+            return None
+        return payload.get("userId")
     except:
- 
         return None
- 
 
- 
 def verify_refresh_token(token):
- 
     try:
- 
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
- 
         if payload.get("type") != "refresh":
- 
             return None
- 
         return payload
- 
-    except JWTError:
- 
-        return None
- 
-
- 
-def create_reset_token(user_id: int) -> str:
- 
-    to_encode = {
- 
-        "sub": str(user_id),
- 
-        "type": "reset",
- 
-        "exp": datetime.utcnow() + timedelta(minutes=RESET_TOKEN_EXPIRE_MINUTES),
- 
-        "iat": datetime.utcnow()
- 
-    }
- 
-    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
- 
-
- 
-def verify_reset_token(token: str) -> Optional[int]:
- 
-    try:
- 
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
- 
-        if payload.get("type") != "reset":
- 
-            return None
- 
-        return int(payload.get("sub"))
- 
     except:
- 
         return None
- 
- 
 
- 
-from fastapi import Header, HTTPException
- 
-
- 
-def get_current_user_id(authorization: str = Header(None)):
- 
-    """从 Authorization header 获取用户ID"""
- 
+def get_current_user(authorization: str = Header(None), db: Session = None):
     if not authorization or not authorization.startswith("Bearer "):
- 
         raise HTTPException(status_code=401, detail="Invalid authorization header")
- 
     token = authorization.split(" ")[1]
- 
     user_id = verify_token(token)
- 
     if not user_id:
- 
         raise HTTPException(status_code=401, detail="Invalid or expired token")
- 
+    if db:
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        return user
     return user_id
- 

@@ -1,7 +1,8 @@
 """主应用"""
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-import sys, os
+from fastapi.responses import JSONResponse
+import sys, os, json
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 app = FastAPI(title="老年拍照助手API", version="1.0.0")
@@ -13,6 +14,32 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.middleware("http")
+async def unified_response_middleware(request: Request, call_next):
+    response = await call_next(request)
+    if response.status_code == 200 and "application/json" in response.headers.get("content-type", ""):
+        body = b""
+        async for chunk in response.body_iterator:
+            body += chunk
+        try:
+            data = json.loads(body.decode())
+            return JSONResponse(content={"code": 0, "message": "success", "data": data})
+        except:
+            return response
+    return response
+
+@app.exception_handler(HTTPException)
+async def custom_http_exception_handler(request: Request, exc: HTTPException):
+    error_map = {
+        400: 1003,
+        401: 1004,
+        403: 1005,
+        404: 2001,
+        409: 1010
+    }
+    code = error_map.get(exc.status_code, 5000)
+    return JSONResponse(content={"code": code, "message": exc.detail, "data": None})
 
 from api.auth import router as auth_router
 app.include_router(auth_router)
