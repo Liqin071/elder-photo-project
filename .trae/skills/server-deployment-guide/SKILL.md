@@ -509,4 +509,14 @@ def login(...):
 23. **base64 生成测试图片**：`python3 -c "import base64; open('/tmp/test.jpg','wb').write(base64.b64decode('...'))"`
 24. **multipart/form-data**：用 `-F "file=@/tmp/test.jpg"` 而非 `-d`，注意字段名要和 API 的 `alias` 匹配
 
+### 本地无法推 GitHub 时的替代流程（2026-07-20 新增）
+25. **服务器推送**：本地连不上 GitHub 但服务器能连时，用 base64 传文件到服务器，在服务器 commit+push
+26. **Python 解码 base64 更可靠**：`python3 -c "import base64; open('out.py','wb').write(base64.b64decode(open('b64.txt').read()))"` 比 `base64 -d` 容错性好
+27. **sed 改 app.py 注册路由**：新增 router 用两行 sed：`sed -i '/from api.xxx/a from api.yyy' app.py` 和 `sed -i '/app.include_router(xxx)/a app.include_router(yyy)' app.py`
+28. **git 分歧处理**：本地和服务器各自有 commit 时，以服务器为准，本地新文件用 base64 传服务器重新 commit
+
+### curl GET 带 query 参数写法（2026-07-20 新增）
+29. **标准格式**：`curl -s -H "Authorization: Bearer $TOKEN" "http://host/api/endpoint?key=value"`
+30. **多参数**：`"http://host/api/endpoint?key1=val1&key2=val2"` — URL 整体加引号避免 `&` 和 `?` 被 bash 解析
+
 遵循这些原则可以避免 90% 的部署问题！
