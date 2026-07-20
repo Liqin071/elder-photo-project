@@ -79,7 +79,7 @@ def create_comment(
         target_type=request["targetType"],
         target_id=request["targetId"],
         content=request.get("content", ""),
-        content_type=request.get("contentType", "text")
+        content_type=request.get("contentType", "text"), author_id=uid,
     )
     db.add(c)
     db.commit()
