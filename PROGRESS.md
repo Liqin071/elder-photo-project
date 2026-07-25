@@ -1,6 +1,6 @@
 # 乡影相伴·情暖夕阳 — 后端开发文档
 
-> 最后更新：2026-07-20
+> 最后更新：2026-07-25
 
 ---
 
@@ -31,6 +31,8 @@
 |------|-----|
 | 公网 IP | 60.205.13.93 |
 | SSH 登录 | root@60.205.13.93 |
+| Git SSH Key | ~/.ssh/id_ed25519（本地） |
+| GitHub SSH | git@github.com:Liqin071/elder-photo-project.git |
 | 工作目录 | /home/elder_photo_project/backend |
 | Python 版本 | 3.11 |
 | 数据库 | MariaDB |
@@ -235,6 +237,11 @@ WX_SECRET=XXXXXXXXXXXXXXXXXXXXXXXXXXXX
 | 服务器和本地文件结构不一致 | 统一以 GitHub 为准 |
 | 远程终端折行打断命令 | 短命令 + 逐行 echo + base64 |
 | role.value 报 AttributeError | 改 role 为 String 后同步调用 |
+| Swagger 无法渲染 /docs | 中间件跳过 /docs,/openapi,/redoc 路径 |
+| Swagger 不显示 Authorize 按钮 | 自定义 OpenAPI schema 添加 BearerAuth |
+| Swagger Authorize 不发送 token | 添加全局 security 声明 |
+| API 返回字段 snake_case 与 API.md 不一致 | 全部改为 camelCase |
+| Form 参数 alias 在 Swagger 不生效 | 直接用 camelCase 参数名 |
 
 ---
 
@@ -248,3 +255,4 @@ WX_SECRET=XXXXXXXXXXXXXXXXXXXXXXXXXXXX
 | v1.3-timeline | 时间线 |
 | v1.4-comments-notifications | 评论+通知 |
 | v1.5-all-fixes | 错误码/儿童/尺寸修复 |
+| v1.6-camelCase-swagger | 字段命名对齐 API.md + Swagger 修复 |
