@@ -9,6 +9,9 @@ import uuid
 
 from models.database import SessionLocal
 from models.comment import Comment
+from models.photo import Photo
+from models.elderly import Elderly
+from models.notification import Notification
 from utils.auth import verify_token
 from utils.exceptions import AppException, ERR_NOT_FOUND, ERR_NO_PERMISSION, ERR_AUTH_REQUIRED
 
@@ -23,6 +26,31 @@ class CommentCreate(BaseModel):
 
 VOICE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "uploads", "voices")
 os.makedirs(VOICE_DIR, exist_ok=True)
+
+
+def _notify_comment(db, author_id: int, author_name: str, target_type: str, target_id: int):
+    """评论后通知目标所有者"""
+    target_user_id = None
+    target_title = ""
+    if target_type == "photo":
+        p = db.query(Photo).filter(Photo.id == target_id).first()
+        if p:
+            target_user_id = p.volunteer_id
+            target_title = f"照片（{p.elderly.name if p.elderly else '未知'}）"
+    elif target_type == "elder":
+        e = db.query(Elderly).filter(Elderly.id == target_id).first()
+        if e:
+            target_user_id = e.created_by
+            target_title = f"老人档案（{e.name}）"
+    if target_user_id and target_user_id != author_id:
+        notif = Notification(
+            user_id=target_user_id,
+            type="comment",
+            title="新评论",
+            content=f"{author_name} 评论了你的{target_title}",
+        )
+        db.add(notif)
+        db.commit()
 
 
 def get_db():
@@ -93,6 +121,7 @@ def create_comment(
     db.add(c)
     db.commit()
     db.refresh(c)
+    _notify_comment(db, uid, c.author.name or "匿名", c.target_type, c.target_id)
     return {
         "id": c.id,
         "targetType": c.target_type,
@@ -137,6 +166,7 @@ async def create_voice_comment(
     db.add(c)
     db.commit()
     db.refresh(c)
+    _notify_comment(db, uid, c.author.name or "匿名", c.target_type, c.target_id)
     return {
         "id": c.id,
         "targetType": c.target_type,
