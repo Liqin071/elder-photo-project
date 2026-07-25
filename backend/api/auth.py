@@ -1,7 +1,7 @@
 """用户认证 API"""
 from fastapi import APIRouter, Depends, Header
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 from models.database import SessionLocal
 from models.user import User, UserRole
@@ -97,7 +97,7 @@ def get_current_user(authorization: str = Header(None), db: Session = Depends(ge
     }
 
 @router.put("/users/me")
-def update_user(request: dict, authorization: str = Header(None), db: Session = Depends(get_db)):
+def update_user(req: UserUpdate, authorization: str = Header(None), db: Session = Depends(get_db)):
     if not authorization or not authorization.startswith("Bearer "):
         raise AppException(ERR_AUTH_REQUIRED, "未登录或token已过期", 401)
     token = authorization.split(" ")[1]
@@ -107,12 +107,12 @@ def update_user(request: dict, authorization: str = Header(None), db: Session = 
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise AppException(ERR_NOT_FOUND, "用户不存在", 404)
-    if "name" in request:
-        user.name = request["name"]
-    if "avatar" in request:
-        user.avatar = request["avatar"]
-    if "phone" in request:
-        user.phone = request["phone"]
+    if req.name is not None:
+        user.name = req.name
+    if req.avatar is not None:
+        user.avatar = req.avatar
+    if req.phone is not None:
+        user.phone = req.phone
     db.commit()
     db.refresh(user)
     return {
@@ -138,6 +138,12 @@ def delete_user(authorization: str = Header(None), db: Session = Depends(get_db)
     db.delete(user)
     db.commit()
     return {"message": "User deleted successfully"}
+
+
+class UserUpdate(BaseModel):
+    name: Optional[str] = Field(None, description="姓名")
+    avatar: Optional[str] = Field(None, description="头像URL")
+    phone: Optional[str] = Field(None, description="手机号")
 
 
 class WxLogin(BaseModel):

@@ -2,6 +2,7 @@
 from fastapi import APIRouter, Depends, Query, Header, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from typing import Optional
+from pydantic import BaseModel, Field
 import os
 import uuid
 from datetime import datetime
@@ -15,6 +16,10 @@ from utils.auth import verify_token
 from utils.exceptions import AppException, ERR_FILE_TYPE, ERR_FILE_TOO_LARGE, ERR_ELDER_NOT_FOUND, ERR_NOT_FOUND, ERR_AUTH_REQUIRED
 
 router = APIRouter(prefix="/api", tags=["照片管理"])
+
+
+class ImageUpdate(BaseModel):
+    note: Optional[str] = Field(None, description="备注内容")
 
 UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "uploads")
 ALLOWED_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp", "image/bmp"}
@@ -148,15 +153,15 @@ def list_images(
 @router.put("/images/{image_id}")
 def update_image(
     image_id: int,
-    request: dict,
+    req: ImageUpdate,
     user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db)
 ):
     p = db.query(Photo).filter(Photo.id == image_id).first()
     if not p:
         raise AppException(ERR_NOT_FOUND, "资源不存在", 404)
-    if "note" in request:
-        p.note = request["note"]
+    if req.note is not None:
+        p.note = req.note
     db.commit()
     return None
 

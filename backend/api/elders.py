@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, Query, Header
 from sqlalchemy.orm import Session
 from typing import Optional
 from datetime import datetime
+from pydantic import BaseModel, Field
 
 from models.database import SessionLocal
 from models.user import User
@@ -11,6 +12,16 @@ from utils.auth import verify_token
 from utils.exceptions import AppException, ERR_NOT_FOUND, ERR_HAS_PHOTOS, ERR_AUTH_REQUIRED
 
 router = APIRouter(prefix="/api", tags=["老人管理"])
+
+
+class ElderUpdate(BaseModel):
+    name: Optional[str] = Field(None, description="姓名")
+    age: Optional[int] = Field(None, description="年龄")
+    gender: Optional[str] = Field(None, description="性别")
+    phone: Optional[str] = Field(None, description="联系电话")
+    emergencyContact: Optional[str] = Field(None, description="紧急联系人")
+    address: Optional[str] = Field(None, description="地址")
+    avatar: Optional[str] = Field(None, description="头像URL")
 
 
 def get_db():
@@ -107,21 +118,27 @@ def create_elder(
 @router.put("/elders/{elder_id}")
 def update_elder(
     elder_id: int,
-    request: dict,
+    req: ElderUpdate,
     user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db)
 ):
     e = db.query(Elderly).filter(Elderly.id == elder_id).first()
     if not e:
         raise AppException(ERR_NOT_FOUND, "资源不存在", 404)
-    field_map = {
-        "name": "name", "age": "age", "gender": "gender",
-        "phone": "contact_info", "emergencyContact": "guardian_contact",
-        "address": "address", "avatar": "avatar"
-    }
-    for api_field, db_field in field_map.items():
-        if api_field in request:
-            setattr(e, db_field, request[api_field])
+    if req.name is not None:
+        e.name = req.name
+    if req.age is not None:
+        e.age = req.age
+    if req.gender is not None:
+        e.gender = req.gender
+    if req.phone is not None:
+        e.contact_info = req.phone
+    if req.emergencyContact is not None:
+        e.guardian_contact = req.emergencyContact
+    if req.address is not None:
+        e.address = req.address
+    if req.avatar is not None:
+        e.avatar = req.avatar
     e.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(e)
