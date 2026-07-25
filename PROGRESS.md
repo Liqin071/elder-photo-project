@@ -19,8 +19,8 @@
   MariaDB（elder_photo_db）
 ```
 
-- 公网入口：`http://36.112.162.239`
-- Swagger 文档：`http://36.112.162.239/docs`
+- 公网入口：`http://60.205.13.93`
+- Swagger 文档：`http://60.205.13.93/docs`
 - GitHub：`https://github.com/Liqin071/elder-photo-project`
 
 ---
@@ -29,8 +29,8 @@
 
 | 项目 | 值 |
 |------|-----|
-| 公网 IP | 36.112.162.239 |
-| SSH 登录 | root@36.112.162.239 |
+| 公网 IP | 60.205.13.93 |
+| SSH 登录 | root@60.205.13.93 |
 | 工作目录 | /home/elder_photo_project/backend |
 | Python 版本 | 3.11 |
 | 数据库 | MariaDB |
@@ -179,7 +179,7 @@ server {
 ## 七、前端联调指南
 
 ### 立即可以开始
-1. 打开 `http://36.112.162.239/docs` 查看 Swagger 文档
+1. 打开 `http://60.205.13.93/docs` 查看 Swagger 文档
 2. 所有接口走 HTTP + 公网 IP 即可联调
 3. 认证方式：`Authorization: Bearer <token>`
 4. 统一响应格式：`{"code": 0, "message": "success", "data": {...}}`
@@ -205,11 +205,11 @@ server {
 1. **买域名**：阿里云万网，几十元/年
 2. **ICP 备案**：阿里云免费代办，约 15-20 个工作日
 3. **申请 SSL 证书**：备案通过后阿里云控制台免费 DV 证书
-4. **DNS 解析**：域名 A 记录指向 `36.112.162.239`
+4. **DNS 解析**：域名 A 记录指向 `60.205.13.93`
 5. **配 Nginx HTTPS**：证书拿到后执行（我来配）
 
 ### 联调阶段不受影响
-用 `http://36.112.162.239` 调 API 完全正常。域名和 HTTPS 是上线前最后一步。
+用 `http://60.205.13.93` 调 API 完全正常。域名和 HTTPS 是上线前最后一步。
 
 ---
 
