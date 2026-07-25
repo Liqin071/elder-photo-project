@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, Query, Header, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import Optional
+from pydantic import BaseModel, Field
 import os
 import uuid
 
@@ -12,6 +13,13 @@ from utils.auth import verify_token
 from utils.exceptions import AppException, ERR_NOT_FOUND, ERR_NO_PERMISSION, ERR_AUTH_REQUIRED
 
 router = APIRouter(prefix="/api", tags=["评论"])
+
+
+class CommentCreate(BaseModel):
+    targetType: str = Field(..., description="目标类型：photo / elder")
+    targetId: int = Field(..., description="目标ID")
+    content: str = Field(..., description="评论内容")
+    contentType: str = Field("text", description="内容类型：text / voice")
 
 VOICE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "uploads", "voices")
 os.makedirs(VOICE_DIR, exist_ok=True)
@@ -72,15 +80,15 @@ def list_comments(
 
 @router.post("/comments", status_code=201)
 def create_comment(
-    request: dict,
+    req: CommentCreate,
     uid: int = Depends(get_uid),
     db: Session = Depends(get_db)
 ):
     c = Comment(
-        target_type=request["targetType"],
-        target_id=request["targetId"],
-        content=request.get("content", ""),
-        content_type=request.get("contentType", "text"), author_id=uid,
+        target_type=req.targetType,
+        target_id=req.targetId,
+        content=req.content,
+        content_type=req.contentType, author_id=uid,
     )
     db.add(c)
     db.commit()
