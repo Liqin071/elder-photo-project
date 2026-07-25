@@ -69,7 +69,7 @@ TOKEN=$(python3 -c "import sys; sys.path.insert(0,'/home/elder_photo_project/bac
 
 ---
 
-## 四、API 清单（28 接口）
+## 四、API 清单（30 接口）
 
 ### 认证（6 个，其中 wx-login、users/me 系列为 API.md 外新增）
 | # | 方法 | 路径 | 说明 |
@@ -94,9 +94,11 @@ TOKEN=$(python3 -c "import sys; sys.path.insert(0,'/home/elder_photo_project/bac
 | 14 | PUT | /api/images/:id | 修改备注 |
 | 15 | DELETE | /api/images/:id | 删除（文件一并删除） |
 
-### 志愿者/家属（2 个）
+### 志愿者/家属（4 个）
 | 16 | GET | /api/volunteer/elders | 我的老人列表 |
-| 17 | GET | /api/family/parents | 家属视图（含统计） |
+| 17 | GET | /api/family/parents | 家属视图（仅显示已绑定，含统计） |
+| — | POST | /api/family/bind | 家属绑定老人（elderId） |
+| — | DELETE | /api/family/bind/:elder_id | 家属解绑老人 |
 
 ### 时间线（3 个）
 | 18 | GET | /api/timeline | 分页列表（cursor 翻页） |
@@ -126,6 +128,12 @@ TOKEN=$(python3 -c "import sys; sys.path.insert(0,'/home/elder_photo_project/bac
 | PUT /api/users/me | 修改个人信息（name/avatar/phone） |
 | DELETE /api/users/me | 注销账号 |
 | PUT /api/notifications/read-all | 一键全部已读 |
+| POST /api/family/bind | 家属绑定老人 |
+| DELETE /api/family/bind/:elder_id | 家属解绑老人 |
+
+### 自动通知
+
+评论照片或老人时，系统自动给照片上传者/老人创建者发送通知（评论自己的不会通知）。
 
 ---
 
