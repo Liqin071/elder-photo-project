@@ -34,24 +34,24 @@ def get_current_user_id(authorization: str = Header(None)):
 def _elder_to_dict(e):
     return {
         "id": e.id, "name": e.name, "age": e.age, "gender": e.gender,
-        "phone": e.contact_info, "emergency_contact": e.guardian_contact,
+        "phone": e.contact_info, "emergencyContact": e.guardian_contact,
         "address": e.address, "avatar": e.avatar,
-        "volunteer_id": e.created_by,
-        "volunteer_name": e.creator.name if e.creator else None,
-        "children_ids": [c.id for c in e.children] if e.children else [],
-        "children_names": [c.name or c.username for c in e.children] if e.children else [],
-        "image_count": len(e.photos) if e.photos else 0,
-        "created_at": str(e.created_at), "updated_at": str(e.updated_at)
+        "volunteerId": e.created_by,
+        "volunteerName": e.creator.name if e.creator else None,
+        "childrenIds": [c.id for c in e.children] if e.children else [],
+        "childrenNames": [c.name or c.username for c in e.children] if e.children else [],
+        "imageCount": len(e.photos) if e.photos else 0,
+        "createdAt": str(e.created_at), "updatedAt": str(e.updated_at)
     }
 
 
 @router.get("/elders")
 def list_elders(
     page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
+    page_size: int = Query(20, ge=1, le=100, alias="pageSize"),
     keyword: Optional[str] = None,
-    sort_by: str = "created_at",
-    sort_order: str = "desc",
+    sort_by: str = Query("createdAt", alias="sortBy"),
+    sort_order: str = Query("desc", alias="sortOrder"),
     user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db)
 ):
@@ -59,13 +59,14 @@ def list_elders(
     if keyword:
         query = query.filter(Elderly.name.contains(keyword))
     total = query.count()
-    col = getattr(Elderly, sort_by, Elderly.created_at)
+    sort_col = "created_at" if sort_by == "createdAt" else sort_by
+    col = getattr(Elderly, sort_col, Elderly.created_at)
     query = query.order_by(col.desc() if sort_order == "desc" else col.asc())
     elders = query.offset((page - 1) * page_size).limit(page_size).all()
     return {
         "list": [_elder_to_dict(e) for e in elders],
-        "total": total, "page": page, "page_size": page_size,
-        "total_pages": (total + page_size - 1) // page_size
+        "total": total, "page": page, "pageSize": page_size,
+        "totalPages": (total + page_size - 1) // page_size
     }
 
 

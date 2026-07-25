@@ -49,8 +49,8 @@ def volunteer_elders(
             "name": e.name,
             "age": e.age,
             "avatar": e.avatar,
-            "image_count": len(e.photos) if e.photos else 0,
-            "last_upload_at": str(last_photo.upload_time) if last_photo else None
+            "imageCount": len(e.photos) if e.photos else 0,
+            "lastUploadAt": str(last_photo.upload_time) if last_photo else None
         })
     return {"elders": result}
 
@@ -80,11 +80,11 @@ def family_parents(
             "relationship": None,
             "avatar": e.avatar,
             "stats": {
-                "total_images": total,
-                "monthly_images": monthly,
-                "unread_messages": 0,
-                "latest_image_url": f"/uploads/{latest.original_path}" if latest else None,
-                "latest_image_date": str(latest.upload_time) if latest else None
+                "totalImages": total,
+                "monthlyImages": monthly,
+                "unreadMessages": 0,
+                "latestImageUrl": f"/uploads/{latest.original_path}" if latest else None,
+                "latestImageDate": str(latest.upload_time) if latest else None
             }
         })
     return {"parents": result}

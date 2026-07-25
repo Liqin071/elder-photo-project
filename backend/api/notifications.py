@@ -38,15 +38,15 @@ def _notif_to_dict(n):
             pass
     return {
         "id": n.id, "type": n.type, "title": n.title,
-        "content": n.content, "is_read": n.is_read,
-        "metadata": meta, "created_at": str(n.created_at)
+        "content": n.content, "isRead": n.is_read,
+        "metadata": meta, "createdAt": str(n.created_at)
     }
 
 
 @router.get("/notifications")
 def list_notifications(
     page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
+    page_size: int = Query(20, ge=1, le=100, alias="pageSize"),
     is_read: Optional[bool] = Query(None, alias="isRead"),
     ntype: Optional[str] = Query(None, alias="type"),
     uid: int = Depends(get_uid),
@@ -63,8 +63,8 @@ def list_notifications(
     notifs = q.offset((page - 1) * page_size).limit(page_size).all()
     return {
         "list": [_notif_to_dict(n) for n in notifs],
-        "total": total, "page": page, "page_size": page_size,
-        "total_pages": (total + page_size - 1) // page_size
+        "total": total, "page": page, "pageSize": page_size,
+        "totalPages": (total + page_size - 1) // page_size
     }
 
 
@@ -77,7 +77,7 @@ def unread_count(
         Notification.user_id == uid,
         Notification.is_read == False
     ).count()
-    return {"unread_count": cnt}
+    return {"unreadCount": cnt}
 
 
 @router.put("/notifications/{notif_id}/read")

@@ -57,7 +57,7 @@ def timeline_years(
         years.append({
             "year": r.year,
             "count": r.cnt,
-            "cover_url": f"/uploads/{cover.original_path}" if cover else None
+            "coverUrl": f"/uploads/{cover.original_path}" if cover else None
         })
     return {"years": years}
 
@@ -85,9 +85,9 @@ def timeline_aggregation(
         months.append({
             "month": m,
             "count": cnt,
-            "cover_url": f"/uploads/{first.original_path}" if first else None,
-            "first_date": str(first.upload_time.date()) if first else None,
-            "last_date": str(last.upload_time.date()) if last else None
+            "coverUrl": f"/uploads/{first.original_path}" if first else None,
+            "firstDate": str(first.upload_time.date()) if first else None,
+            "lastDate": str(last.upload_time.date()) if last else None
         })
     return {"year": year, "months": months}
 
@@ -98,7 +98,7 @@ def timeline(
     start_date: Optional[str] = Query(None, alias="startDate"),
     end_date: Optional[str] = Query(None, alias="endDate"),
     cursor: Optional[int] = None,
-    page_size: int = Query(20, le=100),
+    page_size: int = Query(20, le=100, alias="pageSize"),
     uid: int = Depends(get_uid),
     db: Session = Depends(get_db)
 ):
@@ -128,15 +128,15 @@ def timeline(
             "day": p.upload_time.day,
             "data": {
                 "url": f"/uploads/{p.original_path}",
-                "thumbnail_url": f"/uploads/{p.thumbnail_path}" if p.thumbnail_path else None,
+                "thumbnailUrl": f"/uploads/{p.thumbnail_path}" if p.thumbnail_path else None,
                 "note": p.note,
-                "elder_id": p.elderly_id,
-                "elder_name": p.elderly.name if p.elderly else None
+                "elderId": p.elderly_id,
+                "elderName": p.elderly.name if p.elderly else None
             }
         })
     return {
         "list": items,
-        "has_more": has_more,
-        "next_cursor": photos[-1].id if has_more and photos else None
+        "hasMore": has_more,
+        "nextCursor": photos[-1].id if has_more and photos else None
     }
 

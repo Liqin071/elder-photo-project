@@ -95,16 +95,16 @@ async def upload_photo(
     return {
         "id": photo.id,
         "url": f"/uploads/{filename}",
-        "thumbnail_url": f"/uploads/thumbs/{thumb_name}" if thumb_name else None,
-        "elder_id": photo.elderly_id,
-        "uploader_id": photo.volunteer_id,
-        "uploader_role": uploader_role,
+        "thumbnailUrl": f"/uploads/thumbs/{thumb_name}" if thumb_name else None,
+        "elderId": photo.elderly_id,
+        "uploaderId": photo.volunteer_id,
+        "uploaderRole": uploader_role,
         "note": photo.note,
-        "file_size": photo.file_size,
+        "fileSize": photo.file_size,
         "width": photo.width,
         "height": photo.height,
         "format": ext,
-        "created_at": str(photo.upload_time)
+        "createdAt": str(photo.upload_time)
     }
 
 
@@ -112,10 +112,10 @@ async def upload_photo(
 def list_images(
     elder_id: Optional[int] = Query(None, alias="elderId"),
     page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
+    page_size: int = Query(20, ge=1, le=100, alias="pageSize"),
     year: Optional[int] = None,
     month: Optional[int] = None,
-    sort_order: str = "desc",
+    sort_order: str = Query("desc", alias="sortOrder"),
     user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db)
 ):
@@ -132,16 +132,16 @@ def list_images(
     return {
         "list": [{
             "id": p.id, "url": f"/uploads/{p.original_path}",
-            "thumbnail_url": f"/uploads/{p.thumbnail_path}" if p.thumbnail_path else None,
-            "note": p.note, "elder_id": p.elderly_id,
-            "elder_name": p.elderly.name if p.elderly else None,
-            "uploader_id": p.volunteer_id,
-            "uploader_name": p.volunteer.name if p.volunteer else None,
-            "uploader_role": None, "file_size": p.file_size, "width": p.width, "height": p.height,
-            "created_at": str(p.upload_time)
+            "thumbnailUrl": f"/uploads/{p.thumbnail_path}" if p.thumbnail_path else None,
+            "note": p.note, "elderId": p.elderly_id,
+            "elderName": p.elderly.name if p.elderly else None,
+            "uploaderId": p.volunteer_id,
+            "uploaderName": p.volunteer.name if p.volunteer else None,
+            "uploaderRole": None, "fileSize": p.file_size, "width": p.width, "height": p.height,
+            "createdAt": str(p.upload_time)
         } for p in photos],
-        "total": total, "page": page, "page_size": page_size,
-        "total_pages": (total + page_size - 1) // page_size
+        "total": total, "page": page, "pageSize": page_size,
+        "totalPages": (total + page_size - 1) // page_size
     }
 
 

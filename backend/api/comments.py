@@ -39,7 +39,7 @@ def list_comments(
     target_type: str = Query(..., alias="targetType"),
     target_id: int = Query(..., alias="targetId"),
     page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
+    page_size: int = Query(20, ge=1, le=100, alias="pageSize"),
     uid: int = Depends(get_uid),
     db: Session = Depends(get_db)
 ):
@@ -52,21 +52,21 @@ def list_comments(
     return {
         "list": [{
             "id": c.id,
-            "target_type": c.target_type,
-            "target_id": c.target_id,
+            "targetType": c.target_type,
+            "targetId": c.target_id,
             "content": c.content,
-            "content_type": c.content_type,
-            "voice_url": c.voice_url,
-            "voice_duration": c.voice_duration,
-            "author_id": c.author_id,
-            "author_name": c.author.name if c.author else None,
-            "author_avatar": c.author.avatar if c.author else None,
-            "author_role": c.author.role if c.author else None,
-            "created_at": str(c.created_at),
-            "can_delete": c.author_id == uid
+            "contentType": c.content_type,
+            "voiceUrl": c.voice_url,
+            "voiceDuration": c.voice_duration,
+            "authorId": c.author_id,
+            "authorName": c.author.name if c.author else None,
+            "authorAvatar": c.author.avatar if c.author else None,
+            "authorRole": c.author.role if c.author else None,
+            "createdAt": str(c.created_at),
+            "canDelete": c.author_id == uid
         } for c in comments],
-        "total": total, "page": page, "page_size": page_size,
-        "total_pages": (total + page_size - 1) // page_size
+        "total": total, "page": page, "pageSize": page_size,
+        "totalPages": (total + page_size - 1) // page_size
     }
 
 
@@ -87,18 +87,18 @@ def create_comment(
     db.refresh(c)
     return {
         "id": c.id,
-        "target_type": c.target_type,
-        "target_id": c.target_id,
+        "targetType": c.target_type,
+        "targetId": c.target_id,
         "content": c.content,
-        "content_type": c.content_type,
-        "voice_url": c.voice_url,
-        "voice_duration": c.voice_duration,
-        "author_id": c.author_id,
-        "author_name": c.author.name if c.author else None,
-        "author_avatar": c.author.avatar if c.author else None,
-        "author_role": c.author.role if c.author else None,
-        "created_at": str(c.created_at),
-        "can_delete": True
+        "contentType": c.content_type,
+        "voiceUrl": c.voice_url,
+        "voiceDuration": c.voice_duration,
+        "authorId": c.author_id,
+        "authorName": c.author.name if c.author else None,
+        "authorAvatar": c.author.avatar if c.author else None,
+        "authorRole": c.author.role if c.author else None,
+        "createdAt": str(c.created_at),
+        "canDelete": True
     }
 
 
@@ -131,18 +131,18 @@ async def create_voice_comment(
     db.refresh(c)
     return {
         "id": c.id,
-        "target_type": c.target_type,
-        "target_id": c.target_id,
+        "targetType": c.target_type,
+        "targetId": c.target_id,
         "content": None,
-        "content_type": "voice",
-        "voice_url": c.voice_url,
-        "voice_duration": c.voice_duration,
-        "author_id": c.author_id,
-        "author_name": c.author.name if c.author else None,
-        "author_avatar": c.author.avatar if c.author else None,
-        "author_role": c.author.role if c.author else None,
-        "created_at": str(c.created_at),
-        "can_delete": True
+        "contentType": "voice",
+        "voiceUrl": c.voice_url,
+        "voiceDuration": c.voice_duration,
+        "authorId": c.author_id,
+        "authorName": c.author.name if c.author else None,
+        "authorAvatar": c.author.avatar if c.author else None,
+        "authorRole": c.author.role if c.author else None,
+        "createdAt": str(c.created_at),
+        "canDelete": True
     }
 
 
