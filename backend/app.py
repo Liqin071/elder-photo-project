@@ -88,6 +88,7 @@ def custom_openapi():
             "bearerFormat": "JWT",
         }
     }
+    openapi_schema["security"] = [{"BearerAuth": []}]
     app.openapi_schema = openapi_schema
     return app.openapi_schema
 
