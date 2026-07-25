@@ -94,7 +94,7 @@ def mark_read(
         raise AppException(ERR_NOT_FOUND, "不存在", 404)
     n.is_read = True
     db.commit()
-    return None
+    return _notif_to_dict(n)
 
 
 @router.put("/notifications/read-all")
