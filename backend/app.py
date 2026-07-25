@@ -19,6 +19,8 @@ app.add_middleware(
 @app.middleware("http")
 async def unified_response_middleware(request: Request, call_next):
     response = await call_next(request)
+    if request.url.path.startswith(("/docs", "/openapi", "/redoc")):
+        return response
     if response.status_code == 200 and "application/json" in response.headers.get("content-type", ""):
         body = b""
         async for chunk in response.body_iterator:
