@@ -67,9 +67,9 @@ TOKEN=$(python3 -c "import sys; sys.path.insert(0,'/home/elder_photo_project/bac
 
 ---
 
-## 四、API 清单（27 接口）
+## 四、API 清单（28 接口）
 
-### 认证（6 个）
+### 认证（6 个，其中 wx-login、users/me 系列为 API.md 外新增）
 | # | 方法 | 路径 | 说明 |
 |---|------|------|------|
 | 1 | POST | /api/auth/register | 注册 |
@@ -107,10 +107,23 @@ TOKEN=$(python3 -c "import sys; sys.path.insert(0,'/home/elder_photo_project/bac
 | 23 | POST | /api/comments/voice | 语音评论（multipart） |
 | 24 | DELETE | /api/comments/:id | 删除（仅作者） |
 
-### 通知（3 个）
+### 通知（4 个，API.md 外新增 read-all）
 | 25 | GET | /api/notifications | 列表 |
 | 26 | GET | /api/notifications/unread-count | 未读数 |
-| 27 | PUT | /api/notifications/:id/read + /read-all | 标记已读/全部已读 |
+| 27 | PUT | /api/notifications/:id/read | 标记已读 |
+| 28 | PUT | /api/notifications/read-all | 全部已读 |
+
+---
+
+### API.md 外新增接口
+
+| 接口 | 说明 |
+|------|------|
+| POST /api/auth/wx-login | 微信小程序登录，code 换 openid + JWT |
+| GET /api/users/me | 查看个人信息 |
+| PUT /api/users/me | 修改个人信息（name/avatar/phone） |
+| DELETE /api/users/me | 注销账号 |
+| PUT /api/notifications/read-all | 一键全部已读 |
 
 ---
 
