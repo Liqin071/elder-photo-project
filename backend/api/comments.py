@@ -105,8 +105,8 @@ def create_comment(
 @router.post("/comments/voice", status_code=201)
 async def create_voice_comment(
     audio: UploadFile = File(...),
-    target_type: str = Form(..., alias="targetType"),
-    target_id: int = Form(..., alias="targetId"),
+    targetType: str = Form(...),
+    targetId: int = Form(...),
     duration: Optional[int] = Form(None),
     uid: int = Depends(get_uid),
     db: Session = Depends(get_db)
@@ -119,8 +119,8 @@ async def create_voice_comment(
         f.write(contents)
 
     c = Comment(
-        target_type=target_type,
-        target_id=target_id,
+        target_type=targetType,
+        target_id=targetId,
         content_type="voice",
         voice_url=f"/uploads/voices/{filename}",
         voice_duration=duration,

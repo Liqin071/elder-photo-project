@@ -44,9 +44,9 @@ def get_current_user_id(authorization: str = Header(None)):
 @router.post("/upload")
 async def upload_photo(
     file: UploadFile = File(...),
-    elder_id: int = Form(..., alias="elderId"),
+    elderId: int = Form(...),
     note: Optional[str] = Form(None),
-    uploader_role: Optional[str] = Form(None, alias="uploaderRole"),
+    uploaderRole: Optional[str] = Form(None),
     user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db)
 ):
@@ -55,7 +55,7 @@ async def upload_photo(
     contents = await file.read()
     if len(contents) > MAX_SIZE:
         raise AppException(ERR_FILE_TOO_LARGE, "超过20MB", 413)
-    elder = db.query(Elderly).filter(Elderly.id == elder_id).first()
+    elder = db.query(Elderly).filter(Elderly.id == elderId).first()
     if not elder:
         raise AppException(ERR_ELDER_NOT_FOUND, "老人不存在", 404)
 
@@ -78,7 +78,7 @@ async def upload_photo(
         pass
 
     photo = Photo(
-        elderly_id=elder_id,
+        elderly_id=elderId,
         volunteer_id=user_id,
         original_path=filename,
         thumbnail_path=f"thumbs/{thumb_name}" if thumb_name else None,
@@ -98,7 +98,7 @@ async def upload_photo(
         "thumbnailUrl": f"/uploads/thumbs/{thumb_name}" if thumb_name else None,
         "elderId": photo.elderly_id,
         "uploaderId": photo.volunteer_id,
-        "uploaderRole": uploader_role,
+        "uploaderRole": uploaderRole,
         "note": photo.note,
         "fileSize": photo.file_size,
         "width": photo.width,
