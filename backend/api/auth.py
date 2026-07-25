@@ -32,6 +32,11 @@ class UserRegister(BaseModel):
     phone: Optional[str] = None
     bindCode: Optional[str] = None
 
+class UserUpdate(BaseModel):
+    name: Optional[str] = Field(None, description="姓名")
+    avatar: Optional[str] = Field(None, description="头像URL")
+    phone: Optional[str] = Field(None, description="手机号")
+
 @router.post("/auth/login")
 def login(user: UserLogin, db: Session = Depends(get_db)):
     db_user = db.query(User).filter(User.username == user.username).first()
@@ -138,12 +143,6 @@ def delete_user(authorization: str = Header(None), db: Session = Depends(get_db)
     db.delete(user)
     db.commit()
     return {"message": "User deleted successfully"}
-
-
-class UserUpdate(BaseModel):
-    name: Optional[str] = Field(None, description="姓名")
-    avatar: Optional[str] = Field(None, description="头像URL")
-    phone: Optional[str] = Field(None, description="手机号")
 
 
 class WxLogin(BaseModel):
