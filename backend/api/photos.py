@@ -24,7 +24,8 @@ class ImageUpdate(BaseModel):
     note: Optional[str] = Field(None, description="备注内容")
 
 UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "uploads")
-ALLOWED_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp", "image/bmp"}
+ALLOWED_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp", "image/bmp", "application/octet-stream"}
+ALLOWED_EXTS = {"jpg", "jpeg", "png", "gif", "webp", "bmp"}
 MAX_SIZE = 20 * 1024 * 1024
 
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -144,7 +145,9 @@ async def upload_photo(
     check_elder_access(db, user, elderId)  # elder 仅自己 / children 仅绑定 / volunteer 仅分配
     # uploaderId 由 token 解出,身份以 token 为准(交接说明 §六.2);uploaderRole 参数仅作展示一致性参考
 
-    if file.content_type not in ALLOWED_TYPES:
+    # 微信开发者工具/部分机型可能以 application/octet-stream 上报,内容类型或扩展名任一合法即可
+    ext_check = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
+    if (file.content_type or "").lower() not in ALLOWED_TYPES and ext_check not in ALLOWED_EXTS:
         raise AppException(ERR_FILE_TYPE, "文件类型不支持", 400)
     contents = await file.read()
     if len(contents) > MAX_SIZE:
