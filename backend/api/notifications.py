@@ -8,6 +8,7 @@ from models.database import SessionLocal
 from models.notification import Notification
 from utils.auth import verify_token
 from utils.exceptions import AppException, ERR_NOT_FOUND, ERR_AUTH_REQUIRED
+from utils.timefmt import fmt_dt
 
 router = APIRouter(prefix="/api", tags=["通知"])
 
@@ -39,7 +40,7 @@ def _notif_to_dict(n):
     return {
         "id": n.id, "type": n.type, "title": n.title,
         "content": n.content, "isRead": n.is_read,
-        "metadata": meta, "createdAt": str(n.created_at)
+        "metadata": meta, "createdAt": fmt_dt(n.created_at)
     }
 
 

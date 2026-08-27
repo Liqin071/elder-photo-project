@@ -1,5 +1,6 @@
 """认证工具函数"""
 import hashlib
+import os
 import bcrypt
 import jwt
 from datetime import datetime, timedelta
@@ -7,9 +8,11 @@ from fastapi import HTTPException, Header
 from sqlalchemy.orm import Session
 from models.user import User
 
-SECRET_KEY = "your-secret-key-here-change-in-production"
+# 生产环境务必通过环境变量注入(服务器 .env 或 export),勿用默认值
+SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-here-change-in-production")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_SECONDS = 7200
+# 小程序契约(交接说明 §四.3):JWT 有效期建议 7~30 天,默认 30 天;可用 JWT_EXPIRE_SECONDS 覆盖
+ACCESS_TOKEN_EXPIRE_SECONDS = int(os.getenv("JWT_EXPIRE_SECONDS", str(30 * 24 * 3600)))
 REFRESH_TOKEN_EXPIRE_DAYS = 7
 
 def pre_hash_password(password):

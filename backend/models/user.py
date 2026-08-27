@@ -25,7 +25,8 @@ class User(Base):
     avatar = Column(String(500), nullable=True)
     phone = Column(String(20), nullable=True)
     openid = Column(String(100), unique=True, nullable=True)
-    elderly_records = relationship("Elderly", back_populates="creator")
+    # elderly 有 created_by / volunteer_id 两个 FK 指向 users,必须显式指定
+    elderly_records = relationship("Elderly", foreign_keys="Elderly.created_by", back_populates="creator")
     photos = relationship("Photo", back_populates="volunteer")
     activities = relationship("Activity", back_populates="volunteer")
 

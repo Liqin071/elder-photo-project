@@ -264,3 +264,15 @@ WX_SECRET=XXXXXXXXXXXXXXXXXXXXXXXXXXXX
 | v1.4-comments-notifications | 评论+通知 |
 | v1.5-all-fixes | 错误码/儿童/尺寸修复 |
 | v1.6-camelCase-swagger | 字段命名对齐 API.md + Swagger 修复 |
+
+---
+
+## 十二、微信小程序适配(2026-08-27)
+
+针对前端交付包(`交接说明.md` / `docs/API文档.md` 26 接口契约)的完整适配,改动明细见 `backend/部署说明.md`。要点:
+
+- **契约对齐**:响应信封覆盖全部 2xx 与 422;时间字段统一北京时间 `"YYYY-MM-DD HH:mm"`(新增 `utils/timefmt.py`);JWT 有效期 30 天。
+- **权限矩阵落地**(`utils/permissions.py` + 各 api 文件):admin 独享档案管理,老人仅自己(白名单字段),家属仅绑定老人,志愿者仅分配老人(新增 `elderly.volunteer_id`,旧数据 `created_by` 兜底);`bind-elder` 姓名+电话全等匹配。
+- **功能补齐**:时间轴按天分组(covers 对象数组);影像详情 `pageSize=999` 可用;上传/留言后通知绑定家属(带 `metadata.elderId`);`GET /images/:id` 单图反查。
+- **数据库**:纯增量迁移脚本 `backend/migrate_miniprogram.py`(仅新增列,不动现有数据);`.env` 需配 `SECRET_KEY` / `WX_APPID` / `WX_SECRET`。
+- **依赖修正**:代码用 PyJWT(`import jwt`),requirements.txt 已补 `PyJWT`。

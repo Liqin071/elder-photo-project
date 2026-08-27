@@ -1,45 +1,33 @@
-"""志愿者和家属专属接口"""
-from fastapi import APIRouter, Depends, Header
+"""志愿者和家属专属 API — 对齐小程序契约 + 权限矩阵"""
+from fastapi import APIRouter, Depends, Header, Request
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 from typing import Optional
-from datetime import datetime
 from pydantic import BaseModel, Field
 
-from models.database import SessionLocal
-from models.user import User
 from models.elderly import Elderly
 from models.photo import Photo
-from utils.auth import verify_token
-from utils.exceptions import AppException, ERR_AUTH_REQUIRED, ERR_NOT_FOUND
+from models.notification import Notification
+from utils.permissions import get_db, get_current_user, deny, get_elder_relationship, unread_comment_count
+from utils.exceptions import AppException, ERR_NOT_FOUND
+from utils.timefmt import fmt_date, now_local
 
 router = APIRouter(prefix="/api", tags=["志愿者/家属"])
 
 
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-
-def get_current_user_id(authorization: str = Header(None)):
-    if not authorization or not authorization.startswith("Bearer "):
-        raise AppException(ERR_AUTH_REQUIRED, "未登录或token已过期", 401)
-    token = authorization.split(" ")[1]
-    user_id = verify_token(token)
-    if not user_id:
-        raise AppException(ERR_AUTH_REQUIRED, "未登录或token已过期", 401)
-    return user_id
-
-
 @router.get("/volunteer/elders")
 def volunteer_elders(
-    user_id: int = Depends(get_current_user_id),
+    request: Request,
+    authorization: str = Header(None),
     db: Session = Depends(get_db)
 ):
-    elders = db.query(Elderly).filter(Elderly.created_by == user_id).all()
+    user = get_current_user(authorization, db)
+    if user.role != "volunteer":
+        deny()  # 矩阵:仅志愿者
+    # 分配关系:优先 volunteer_id,旧数据 created_by 兜底(交接说明 §四/§六)
+    elders = db.query(Elderly).filter(
+        or_(Elderly.volunteer_id == user.id, Elderly.created_by == user.id)
+    ).all()
     result = []
     for e in elders:
         last_photo = db.query(Photo).filter(
@@ -51,23 +39,26 @@ def volunteer_elders(
             "age": e.age,
             "avatar": e.avatar,
             "imageCount": len(e.photos) if e.photos else 0,
-            "lastUploadAt": str(last_photo.upload_time) if last_photo else None
+            "lastUploadAt": fmt_date(last_photo.upload_time) if last_photo else None
         })
     return {"elders": result}
 
 
 @router.get("/family/parents")
 def family_parents(
-    user_id: int = Depends(get_current_user_id),
+    request: Request,
+    authorization: str = Header(None),
     db: Session = Depends(get_db)
 ):
-    user = db.query(User).filter(User.id == user_id).first()
+    user = get_current_user(authorization, db)
+    if user.role != "children":
+        deny()  # 矩阵:仅家属端消费
     elders = user.parent_elders if user else []
     result = []
-    now = datetime.utcnow()
-    month_start = datetime(now.year, now.month, 1)
     for e in elders:
         total = db.query(Photo).filter(Photo.elderly_id == e.id).count()
+        now = now_local()
+        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         monthly = db.query(Photo).filter(
             Photo.elderly_id == e.id,
             Photo.upload_time >= month_start
@@ -78,17 +69,25 @@ def family_parents(
         result.append({
             "id": e.id,
             "name": e.name,
-            "relationship": None,
+            "relationship": get_elder_relationship(db, user.id, e.id),
             "avatar": e.avatar,
             "stats": {
                 "totalImages": total,
                 "monthlyImages": monthly,
-                "unreadMessages": 0,
-                "latestImageUrl": f"/uploads/{latest.original_path}" if latest else None,
-                "latestImageDate": str(latest.upload_time) if latest else None
+                # 契约 2.1:该老人名下当前家属未读的留言通知数(metadata.elderId 匹配)
+                "unreadMessages": unread_comment_count(db, user.id, e.id),
+                "latestImageUrl": _photo_url(request, latest) if latest else None,
+                "latestImageDate": fmt_date(latest.upload_time) if latest else None
             }
         })
     return {"parents": result}
+
+
+def _photo_url(request, photo):
+    if not photo:
+        return None
+    base = str(request.base_url).rstrip("/")
+    return base + f"/uploads/{photo.thumbnail_path or photo.original_path}"
 
 
 class BindRequest(BaseModel):
@@ -98,13 +97,13 @@ class BindRequest(BaseModel):
 @router.post("/family/bind")
 def family_bind(
     req: BindRequest,
-    user_id: int = Depends(get_current_user_id),
+    authorization: str = Header(None),
     db: Session = Depends(get_db)
 ):
+    user = get_current_user(authorization, db)
     elder = db.query(Elderly).filter(Elderly.id == req.elderId).first()
     if not elder:
         raise AppException(ERR_NOT_FOUND, "老人不存在", 404)
-    user = db.query(User).filter(User.id == user_id).first()
     if elder in user.parent_elders:
         return {"message": "已绑定", "elderId": elder.id, "elderName": elder.name}
     user.parent_elders.append(elder)
@@ -120,13 +119,13 @@ def family_bind(
 @router.delete("/family/bind/{elder_id}")
 def family_unbind(
     elder_id: int,
-    user_id: int = Depends(get_current_user_id),
+    authorization: str = Header(None),
     db: Session = Depends(get_db)
 ):
+    user = get_current_user(authorization, db)
     elder = db.query(Elderly).filter(Elderly.id == elder_id).first()
     if not elder:
         raise AppException(ERR_NOT_FOUND, "老人不存在", 404)
-    user = db.query(User).filter(User.id == user_id).first()
     if elder in user.parent_elders:
         user.parent_elders.remove(elder)
         db.commit()

@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from models import Base, engine
 from models.user import User, UserRole
 from models.elderly import Elderly
-from models.photo import Photo, PhotoType, PhotoStatus, AIEnhancementType
+from models.photo import Photo
 from models.activity import Activity
 
 
