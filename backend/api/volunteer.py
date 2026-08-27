@@ -7,7 +7,6 @@ from pydantic import BaseModel, Field
 
 from models.elderly import Elderly
 from models.photo import Photo
-from models.notification import Notification
 from utils.permissions import get_db, get_current_user, deny, get_elder_relationship, unread_comment_count
 from utils.exceptions import AppException, ERR_NOT_FOUND
 from utils.timefmt import fmt_date, now_local
