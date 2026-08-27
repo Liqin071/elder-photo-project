@@ -1,0 +1,26 @@
+# 老年拍照助手后端 —— systemd 自启服务(服务器重启后自动拉起 uvicorn)
+# 安装:
+#   1. cp /home/elder_photo_project/backend/elder-photo.service /etc/systemd/system/
+#   2. 先停掉手动起的进程:  pkill -f uvicorn
+#   3. systemctl daemon-reload && systemctl enable --now elder-photo
+#   4. systemctl status elder-photo     # 看到 active (running) 即成功
+#   5. 常用: systemctl restart elder-photo / systemctl stop elder-photo / journalctl -u elder-photo -f
+# 注意: 若 python3 不在 /usr/bin/python3,先用 `which python3` 查实际路径并修改 ExecStart。
+
+[Unit]
+Description=Elder Photo Backend (FastAPI uvicorn)
+After=network.target mysqld.service mariadb.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/elder_photo_project/backend
+EnvironmentFile=/home/elder_photo_project/backend/.env
+ExecStart=/usr/bin/python3 -m uvicorn app:app --host 0.0.0.0 --port 8000
+Restart=always
+RestartSec=3
+# 上线 HTTPS 后如需经 nginx 代理,保持 127.0.0.1 监听更安全:
+# ExecStart=/usr/bin/python3 -m uvicorn app:app --host 127.0.0.1 --port 8000
+KillSignal=SIGINT
+
+[Install]
+WantedBy=multi-user.target
