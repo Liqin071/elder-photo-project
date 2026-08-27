@@ -64,6 +64,14 @@ def _build_user_info(db_user, db):
 @router.post("/auth/login")
 def login(user: UserLogin, db: Session = Depends(get_db)):
     db_user = db.query(User).filter(User.username == user.username).first()
+    if not db_user:
+        # 老人端便利:前端注册老人时只收姓名+手机号(没有设密码环节),
+        # 后端默认密码 = 注册手机号。这里额外支持"手机号/手机号"登录:
+        # 用户名填 11 位手机号时,按 elder 角色的 phone 匹配账号。
+        if user.username.isdigit() and len(user.username) == 11:
+            db_user = db.query(User).filter(
+                User.phone == user.username, User.role == "elder"
+            ).first()
     if not db_user or not verify_password(user.password, db_user.password_hash):
         raise AppException(ERR_AUTH_FAILED, "用户名或密码错误", 401)
     token = create_access_token(db_user.id, db_user.role)
