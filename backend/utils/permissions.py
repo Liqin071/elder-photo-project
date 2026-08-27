@@ -53,7 +53,8 @@ def elder_of_user(db: Session, user: User):
     elder 角色 → 自己的老人档案。定位链:
     1. 自己创建的(register-elder 自助注册场景,created_by = 本人)
     2. 姓名匹配(管理员/志愿者代建档场景)
-    3. 手机号匹配(兜底)
+    3. 用户名匹配(管理员建档时 name 为空、username 即老人姓名的场景)
+    4. 手机号匹配(兜底)
     非 elder 角色返回 None。
     """
     if user.role != "elder":
@@ -63,6 +64,10 @@ def elder_of_user(db: Session, user: User):
         return e
     if user.name:
         e = db.query(Elderly).filter(Elderly.name == user.name).first()
+        if e:
+            return e
+    if user.username:
+        e = db.query(Elderly).filter(Elderly.name == user.username).first()
         if e:
             return e
     if user.phone:
