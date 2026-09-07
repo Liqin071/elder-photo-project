@@ -17,6 +17,7 @@ import uuid
 
 from models.user import User, UserRole
 from models.elderly import Elderly
+from models.elder_application import ElderApplication
 from models.elderly_child import elderly_child
 from utils.permissions import (
     get_db, get_current_user, is_admin, deny, elder_of_user, find_elder_user, check_elder_access,
@@ -261,6 +262,9 @@ def delete_elder(
         raise AppException(ERR_HAS_PHOTOS, "该老人存在影像数据，不能删除")
     # 级联:解除家属绑定
     db.execute(elderly_child.delete().where(elderly_child.c.elderly_id == elder_id))
+    # 级联:申请记录(approve 回填了 elder_id)解除引用,避免外键拦删除
+    db.execute(ElderApplication.__table__.update().where(
+        ElderApplication.elder_id == elder_id).values(elder_id=None))
     # 级联:停用老人登录账号(软删,保护外键与历史)
     account = find_elder_user(db, e)
     if account:
