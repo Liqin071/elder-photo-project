@@ -202,12 +202,15 @@ if __name__ == "__main__":
         if a.startswith("--photos="):
             photos = int(a.split("=", 1)[1])
     if "--reset-existing" in args:
-        for u in DB.query(User).filter(User.role.in_(["admin", "volunteer", "children", "elder"])).all():
-            if not verify_password(PWD, u.password_hash) and u.username in ("admin", "李小明", "李秀英", "志愿者"):
+        for u in DB.query(User).filter(User.username.in_(["admin", "李小明", "李秀英", "志愿者"])).all():
+            if not verify_password(PWD, u.password_hash):
                 u.password_hash = get_password_hash(PWD)
-                CREATED["reset"].append(u.username)
+                CREATED["reset"].append(u.username + "(密码)")
+            if u.is_active is False:
+                u.is_active = True
+                CREATED["reset"].append(u.username + "(重新激活)")
         DB.commit()
-        print("已重置指定账号密码为", PWD, CREATED["reset"])
+        print("已重置/激活:", CREATED["reset"] if CREATED["reset"] else "无(四账号本就密码正确且激活)")
 
     if undo:
         undo_all()
