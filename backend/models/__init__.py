@@ -5,3 +5,4 @@ from .photo import Photo
 from .activity import Activity
 from .comment import Comment
 from .notification import Notification
+from .elder_application import ElderApplication

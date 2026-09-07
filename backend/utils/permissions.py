@@ -2,8 +2,10 @@
 权限矩阵辅助 — 交接说明 §六(后端必须强制,前端校验只是体验):
 - get_current_user:从 Bearer token 解出 User 对象(失败抛 401)
 - elder_of_user:elder 角色定位自己的老人档案(created_by → name → phone 兜底链)
+- find_elder_user:老人档案 → 其登录账号(建档即开户/认领/自助注册的 users 行)
+- add_binding:写 elderly_children 绑定(带 relationship + created_at)
 - check_elder_access:校验用户与老人档案的关系(本人/绑定家属/分配志愿者/admin),失败抛 2003
-- get_elder_relationship:绑定关系显示名("母亲"/"父亲",无则 "家人")
+- get_elder_relationship:绑定关系显示名,无则 "家人"
 """
 import json
 from fastapi import Header
@@ -16,6 +18,7 @@ from models.elderly_child import elderly_child
 from models.notification import Notification
 from utils.auth import verify_token
 from utils.exceptions import AppException, ERR_AUTH_REQUIRED, ERR_NO_PERMISSION
+from utils.timefmt import now_local
 
 
 def get_db():
@@ -27,7 +30,7 @@ def get_db():
 
 
 def get_current_user(authorization: str, db: Session):
-    """从 Bearer token 解出 User;缺失/无效/不存在 → HTTP 401(前端清登录态跳登录页)"""
+    """从 Bearer token 解出 User;缺失/无效/不存在/已禁用 → HTTP 401(前端清登录态跳登录页)"""
     if not authorization or not authorization.startswith("Bearer "):
         raise AppException(ERR_AUTH_REQUIRED, "未登录或token已过期", 401)
     uid = verify_token(authorization.split(" ")[1])
@@ -36,6 +39,8 @@ def get_current_user(authorization: str, db: Session):
     user = db.query(User).filter(User.id == uid).first()
     if not user:
         raise AppException(ERR_AUTH_REQUIRED, "未登录或token已过期", 401)
+    if user.is_active is False:
+        raise AppException(ERR_AUTH_REQUIRED, "账户已被禁用", 401)
     return user
 
 
@@ -133,3 +138,43 @@ def unread_comment_count(db: Session, user_id: int, elder_id: int) -> int:
         if meta.get("elderId") == elder_id:
             cnt += 1
     return cnt
+
+
+def find_elder_user(db: Session, elder):
+    """
+    老人档案 → 其登录账号(建档即开户 / 认领 / 自助注册产生的 role=elder 的 users 行)。
+    定位链:id=created_by → username=姓名 → phone=联系电话。找不到返回 None。
+    """
+    if elder is None:
+        return None
+    u = db.query(User).filter(User.id == elder.created_by, User.role == "elder").first()
+    if u:
+        return u
+    u = db.query(User).filter(User.username == elder.name, User.role == "elder").first()
+    if u:
+        return u
+    if elder.contact_info:
+        u = db.query(User).filter(User.phone == elder.contact_info, User.role == "elder").first()
+    return u
+
+
+def add_binding(db: Session, child_id: int, elder_id: int, relationship=None):
+    """写入 elderly_children 绑定(带 relationship + created_at);已存在则跳过。返回是否新增。"""
+    row = db.execute(
+        elderly_child.select().where(
+            elderly_child.c.child_id == child_id,
+            elderly_child.c.elderly_id == elder_id,
+        )
+    ).first()
+    if row:
+        return False
+    db.execute(
+        elderly_child.insert().values(
+            child_id=child_id,
+            elderly_id=elder_id,
+            relationship=(relationship or "").strip() or "其他",
+            created_at=now_local(),
+        )
+    )
+    db.commit()
+    return True

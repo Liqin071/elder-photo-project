@@ -43,8 +43,12 @@ ADDITIVE_ALTERS = [
     ("photos", "ALTER TABLE photos ADD COLUMN IF NOT EXISTS file_size INT NULL"),
     ("photos", "ALTER TABLE photos ADD COLUMN IF NOT EXISTS width INT NULL"),
     ("photos", "ALTER TABLE photos ADD COLUMN IF NOT EXISTS height INT NULL"),
-    # elderly_children:绑定关系显示名(母亲/父亲),缺失时 create_all 已建,此处补列
+    # elderly_children:绑定关系显示名(母亲/父亲)+ 绑定时间(N7 families.boundAt)
     ("elderly_children", "ALTER TABLE elderly_children ADD COLUMN IF NOT EXISTS relationship VARCHAR(20) NULL"),
+    ("elderly_children", "ALTER TABLE elderly_children ADD COLUMN IF NOT EXISTS created_at DATETIME NULL DEFAULT CURRENT_TIMESTAMP"),
+    # 2026-08-28 V0907 登录注册重构:
+    # users.is_active = 软删标志(志愿者被删/老人档案被删后账号停用,登录被拒;FK 与历史展示不受影响)
+    ("users", "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active TINYINT(1) NOT NULL DEFAULT 1"),
 ]
 
 

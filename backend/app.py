@@ -25,17 +25,23 @@ async def unified_response_middleware(request: Request, call_next):
     if request.url.path.startswith(("/docs", "/openapi", "/redoc")):
         return response
     # 小程序契约(交接说明 §四.1):所有成功响应统一信封 {code, message, data}
-    # 2xx 一律包装(含 201 创建类),非 JSON(静态文件/文件流)不处理
+    # 2xx 一律包装(含 201 创建类),非 JSON(静态文件/文件流)不处理;
+    # 已是信封的响应(业务失败 code≠0 / 校验失败,见下方异常处理器)不再二次包装。
     if response.status_code < 300 and "application/json" in response.headers.get("content-type", ""):
         body = b""
         async for chunk in response.body_iterator:
             body += chunk
         try:
             data = json.loads(body.decode())
+            headers = {k: v for k, v in response.headers.items() if k.lower() != "content-length"}
+            if isinstance(data, dict) and "code" in data:
+                # 已是信封(业务失败 code≠0 / 校验失败):原样重建,避免 body_iterator 被消费后空响应
+                return JSONResponse(content=data, status_code=response.status_code, headers=headers)
+            # 成功响应:统一包装成 {code:0, message:"success", data}
             return JSONResponse(
                 content={"code": 0, "message": "success", "data": data},
                 status_code=response.status_code,
-                headers={k: v for k, v in response.headers.items() if k.lower() != "content-length"},
+                headers=headers,
             )
         except:
             return response
@@ -43,17 +49,21 @@ async def unified_response_middleware(request: Request, call_next):
 
 @app.exception_handler(StarletteHTTPException)
 async def custom_http_exception_handler(request: Request, exc: HTTPException):
-    """统一信封:注册在 Starlette 基类上,同时覆盖端点抛出的业务异常与未知路由 404"""
-    from utils.exceptions import AppException
+    """统一信封。业务错误(带 biz_code)一律 HTTP 200 + code≠0(前端把 2xx+code≠0 当业务失败 toast);
+    仅 1004(未登录/token 失效/禁用)返回 HTTP 401(前端清登录态跳登录页,见契约 §0)。"""
+    from utils.exceptions import AppException, ERR_AUTH_REQUIRED
     if isinstance(exc, AppException):
         code = exc.biz_code
-    elif exc.status_code == 404:
-        code = 2001  # 未知路由/资源不存在统一 2001
-    else:
-        code = 5000
+        status = 401 if code == ERR_AUTH_REQUIRED else 200
+        return JSONResponse(
+            status_code=status,
+            content={"code": code, "message": exc.detail, "data": None}
+        )
+    if exc.status_code == 404:
+        return JSONResponse(status_code=404, content={"code": 2001, "message": exc.detail or "资源不存在", "data": None})
     return JSONResponse(
         status_code=exc.status_code,
-        content={"code": code, "message": exc.detail, "data": None}
+        content={"code": 5000, "message": str(exc.detail), "data": None}
     )
 
 @app.exception_handler(RequestValidationError)
@@ -83,6 +93,8 @@ from api.comments import router as comments_router
 app.include_router(comments_router)
 from api.notifications import router as notifications_router
 app.include_router(notifications_router)
+from api.admin_ops import router as admin_ops_router
+app.include_router(admin_ops_router)
 
 UPLOAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)

@@ -1,5 +1,5 @@
 """用户表模型"""
-from sqlalchemy import Column, Integer, String, DateTime, Enum, func
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, func
 from sqlalchemy.orm import relationship
 from .database import Base
 import enum
@@ -25,6 +25,8 @@ class User(Base):
     avatar = Column(String(500), nullable=True)
     phone = Column(String(20), nullable=True)
     openid = Column(String(100), unique=True, nullable=True)
+    # 2026-08-28:软删标记(志愿者被删/老人档案被删后账号失效但不物理删除,保护外键与历史展示)
+    is_active = Column(Boolean, default=True)
     # elderly 有 created_by / volunteer_id 两个 FK 指向 users,必须显式指定
     elderly_records = relationship("Elderly", foreign_keys="Elderly.created_by", back_populates="creator")
     photos = relationship("Photo", back_populates="volunteer")
