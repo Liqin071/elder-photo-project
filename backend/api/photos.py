@@ -1,23 +1,26 @@
-"""照片管理 API — 对齐小程序前端契约 + 权限矩阵(交接说明 §六)"""
+"""照片管理 API — 对齐小程序契约 + 权限矩阵 + 通知矩阵(2026-09-12)"""
 from fastapi import APIRouter, Depends, Query, Header, UploadFile, File, Form, Request
 from sqlalchemy.orm import Session
 from typing import Optional
 from pydantic import BaseModel, Field
 import os
-import json
 import uuid
 from datetime import datetime
 from io import BytesIO
 from PIL import Image
 
 from models.photo import Photo
+from models.comment import Comment
 from models.elderly import Elderly
-from models.notification import Notification
-from utils.permissions import get_db, get_current_user, is_admin, deny, elder_of_user, check_elder_access, get_elder_relationship
+from utils.permissions import get_db, get_current_user, is_admin, deny, elder_of_user, check_elder_access
 from utils.exceptions import AppException, ERR_FILE_TYPE, ERR_FILE_TOO_LARGE, ERR_ELDER_NOT_FOUND, ERR_NOT_FOUND
 from utils.timefmt import fmt_dt, now_local
+from utils.notify import notify_upload, notify_image_deleted, cleanup_image_notifications
 
 router = APIRouter(prefix="/api", tags=["照片管理"])
+
+# AI 修图效果枚举(2026-09-12;2026-09-21 增加 beautify)
+AI_MODES = {"restore", "beautify", "enhance", "colorize"}
 
 
 class ImageUpdate(BaseModel):
@@ -74,6 +77,7 @@ def _photo_to_dict(p, request, user, db):
         "width": p.width,
         "height": p.height,
         "createdAt": fmt_dt(p.upload_time),
+        "aiMode": p.ai_mode,
         "canDelete": can_delete
     }
 
@@ -98,33 +102,6 @@ def _check_image_scope(db, user, elder_id):
     return elder_id
 
 
-def _notify_new_photos(db, uploader, elder, count):
-    """上传后通知该老人绑定的所有家属(type=image, metadata.elderId 供前端跳转)"""
-    children = elder.children if elder else []
-    if not children:
-        return
-    uploader_name = uploader.name or uploader.username
-    for child in children:
-        if child.id == uploader.id:
-            continue
-        rel = get_elder_relationship(db, child.id, elder.id)
-        if rel in ("母亲", "妈妈"):
-            title = "妈妈有新的照片"
-        elif rel in ("父亲", "爸爸"):
-            title = "爸爸有新的照片"
-        else:
-            title = f"{elder.name}有新的照片"
-        content = f"{uploader_name} 为 {elder.name} 上传了 {count} 张新照片"
-        db.add(Notification(
-            user_id=child.id,
-            type="image",
-            title=title,
-            content=content,
-            metadata_info=json.dumps({"elderId": elder.id}),
-        ))
-    db.commit()
-
-
 @router.post("/upload")
 async def upload_photo(
     request: Request,
@@ -133,6 +110,7 @@ async def upload_photo(
     note: Optional[str] = Form(None),
     uploaderRole: Optional[str] = Form(None),
     subscribeGranted: Optional[str] = Form(None),
+    aiMode: Optional[str] = Form(None),
     authorization: str = Header(None),
     db: Session = Depends(get_db)
 ):
@@ -144,6 +122,10 @@ async def upload_photo(
         raise AppException(ERR_ELDER_NOT_FOUND, "老人不存在", 404)
     check_elder_access(db, user, elderId)  # elder 仅自己 / children 仅绑定 / volunteer 仅分配
     # uploaderId 由 token 解出,身份以 token 为准(交接说明 §六.2);uploaderRole 参数仅作展示一致性参考
+    # aiMode:空串/缺省 = 原图直传;非法值不落库(容错为原图,不阻断上传)
+    ai_mode = (aiMode or "").strip() or None
+    if ai_mode and ai_mode not in AI_MODES:
+        ai_mode = None
 
     # 微信开发者工具/部分机型可能以 application/octet-stream 上报,内容类型或扩展名任一合法即可
     ext_check = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
@@ -177,6 +159,7 @@ async def upload_photo(
         original_path=filename,
         thumbnail_path=f"thumbs/{thumb_name}" if thumb_name else None,
         note=(note and note.strip()) or "暂无备注",
+        ai_mode=ai_mode,
         file_size=len(contents),
         width=img_w,
         height=img_h,
@@ -186,8 +169,8 @@ async def upload_photo(
     db.commit()
     db.refresh(photo)
 
-    # 站内通知:推给该老人绑定的所有家属(type=image)
-    _notify_new_photos(db, user, elder, 1)
+    # 站内通知(2026-09-12 通知矩阵:上传者=elder → 家属;=children/volunteer → 老人 + 家属除本人)
+    notify_upload(db, user, elder, photo.id, 1)
 
     result = _photo_to_dict(photo, request, user, db)
     result.pop("canDelete", None)  # 上传响应不含 canDelete(契约 2.6)
@@ -294,6 +277,25 @@ def delete_image(
             deny()
     else:
         deny()
+    elder = p.elderly
+    # ① 级联删除该照片下所有留言(语音文件一并清理)
+    comments = db.query(Comment).filter(
+        Comment.target_type.in_(("image", "photo")),
+        Comment.target_id == image_id,
+    ).all()
+    for c in comments:
+        if c.voice_url:
+            vp = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), c.voice_url.lstrip("/"))
+            if os.path.exists(vp):
+                try:
+                    os.remove(vp)
+                except Exception:
+                    pass
+        db.delete(c)
+    db.commit()
+    # ② 清理所有引用该照片的通知(含已读:照片已不存在,通知即死链)
+    cleanup_image_notifications(db, image_id)
+    # ③ 文件落盘清理
     filepath = os.path.join(UPLOAD_DIR, p.original_path)
     if os.path.exists(filepath):
         os.remove(filepath)
@@ -303,4 +305,6 @@ def delete_image(
             os.remove(thumb_path)
     db.delete(p)
     db.commit()
+    # ④ 按通知矩阵写 system 删除通知(metadata 不带 imageId)
+    notify_image_deleted(db, user, elder)
     return None

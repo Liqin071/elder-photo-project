@@ -7,9 +7,10 @@ from pydantic import BaseModel, Field
 
 from models.elderly import Elderly
 from models.photo import Photo
-from utils.permissions import get_db, get_current_user, deny, get_elder_relationship, unread_comment_count
+from utils.permissions import get_db, get_current_user, deny, get_elder_relationship
 from utils.exceptions import AppException, ERR_NOT_FOUND
 from utils.timefmt import fmt_date, now_local
+from utils.notify import unread_messages_count
 
 router = APIRouter(prefix="/api", tags=["志愿者/家属"])
 
@@ -73,8 +74,9 @@ def family_parents(
             "stats": {
                 "totalImages": total,
                 "monthlyImages": monthly,
-                # 契约 2.1:该老人名下当前家属未读的留言通知数(metadata.elderId 匹配)
-                "unreadMessages": unread_comment_count(db, user.id, e.id),
+                # 契约 2.1(2026-09-12 硬契约):该老人名下照片上"作者非老人本人且未读"的留言实时条数
+                # (comments 行 + elder_read_at 实时 COUNT,严禁计数器缓存)
+                "unreadMessages": unread_messages_count(db, e),
                 "latestImageUrl": _photo_url(request, latest) if latest else None,
                 "latestImageDate": fmt_date(latest.upload_time) if latest else None
             }

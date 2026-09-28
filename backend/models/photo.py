@@ -16,6 +16,8 @@ class Photo(Base):
     status = Column(String(20), default="original")
     ai_enhancement_type = Column(String(30), default="none")
     note = Column(Text, nullable=True)
+    # 2026-09-12:AI 修图效果(restore/beautify/enhance/colorize;NULL=原图直传),详情页据此展示徽标
+    ai_mode = Column(String(20), nullable=True)
     file_size = Column(Integer, nullable=True)
     width = Column(Integer, nullable=True)
     height = Column(Integer, nullable=True)

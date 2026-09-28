@@ -95,6 +95,8 @@ from api.notifications import router as notifications_router
 app.include_router(notifications_router)
 from api.admin_ops import router as admin_ops_router
 app.include_router(admin_ops_router)
+from api.ai import router as ai_router
+app.include_router(ai_router)
 
 UPLOAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)

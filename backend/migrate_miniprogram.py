@@ -49,6 +49,11 @@ ADDITIVE_ALTERS = [
     # 2026-08-28 V0907 登录注册重构:
     # users.is_active = 软删标志(志愿者被删/老人档案被删后账号停用,登录被拒;FK 与历史展示不受影响)
     ("users", "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active TINYINT(1) NOT NULL DEFAULT 1"),
+    # 2026-09-12 通知闭环 + AI 修图:
+    # comments.elder_read_at = 老人已读回执(家属端"未读留言"角标实时口径依据)
+    ("comments", "ALTER TABLE comments ADD COLUMN IF NOT EXISTS elder_read_at DATETIME NULL"),
+    # photos.ai_mode = AI 修图效果(restore/beautify/enhance/colorize;空=原图直传)
+    ("photos", "ALTER TABLE photos ADD COLUMN IF NOT EXISTS ai_mode VARCHAR(20) NULL"),
 ]
 
 

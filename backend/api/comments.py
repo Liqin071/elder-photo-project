@@ -1,19 +1,18 @@
-"""评论 API — 对齐小程序契约 + 权限矩阵"""
+"""评论 API — 对齐小程序契约 + 权限矩阵 + 通知矩阵/已读回执(2026-09-12)"""
 from fastapi import APIRouter, Depends, Query, Header, UploadFile, File, Form, Request
 from sqlalchemy.orm import Session
 from typing import Optional
 from pydantic import BaseModel, Field
 import os
-import json
 import uuid
 
 from models.comment import Comment
 from models.photo import Photo
 from models.elderly import Elderly
-from models.notification import Notification
 from utils.permissions import get_db, get_current_user, is_admin, deny, elder_of_user, check_elder_access
 from utils.exceptions import AppException, ERR_NOT_FOUND, ERR_NO_PERMISSION
 from utils.timefmt import fmt_dt
+from utils.notify import notify_comment, cleanup_comment_notifications, mark_comments_read
 
 router = APIRouter(prefix="/api", tags=["评论"])
 
@@ -78,28 +77,6 @@ def _check_target_access(db, user, photo):
         check_elder_access(db, user, photo.elderly_id)
 
 
-def _notify_comment(db, author, comment, photo):
-    """留言后通知该老人绑定的所有家属(type=comment, metadata.elderId 供跳转)"""
-    if not photo or not photo.elderly:
-        return
-    elder = photo.elderly
-    children = elder.children
-    if not children:
-        return
-    author_name = author.name or author.username
-    for child in children:
-        if child.id == author.id:
-            continue
-        db.add(Notification(
-            user_id=child.id,
-            type="comment",
-            title="照片收到新留言",
-            content=f"{author_name} 回复了照片留言",
-            metadata_info=json.dumps({"elderId": elder.id}),
-        ))
-    db.commit()
-
-
 @router.get("/comments")
 def list_comments(
     request: Request,
@@ -153,7 +130,9 @@ def create_comment(
     db.add(c)
     db.commit()
     db.refresh(c)
-    _notify_comment(db, user, c, photo)
+    # 通知矩阵(§2.11):作者=家属/志愿者 → 通知老人;作者=老人 → 通知全部绑定家属
+    if photo and photo.elderly:
+        notify_comment(db, user, photo.elderly, photo.id, c.id, "text", content)
     return _comment_to_dict(c, request, user)
 
 
@@ -194,7 +173,9 @@ async def create_voice_comment(
     db.add(c)
     db.commit()
     db.refresh(c)
-    _notify_comment(db, user, c, photo)
+    # 通知矩阵(§2.11):语音留言同样写通知(摘要为 [语音留言])
+    if photo and photo.elderly:
+        notify_comment(db, user, photo.elderly, photo.id, c.id, "voice", "")
     return _comment_to_dict(c, request, user)
 
 
@@ -216,4 +197,37 @@ def delete_comment(
             os.remove(vp)
     db.delete(c)
     db.commit()
+    # 级联清理(§2.10 硬契约):删除该留言生成的**未读**通知(所有接收人,metadata.commentId 命中)
+    cleanup_comment_notifications(db, comment_id)
+    return None
+
+
+class CommentReadRequest(BaseModel):
+    targetType: str = Field("image", description="目标类型:image")
+    targetId: int = Field(..., description="照片 id")
+
+
+@router.put("/comments/read")
+def mark_read(
+    req: CommentReadRequest,
+    authorization: str = Header(None),
+    db: Session = Depends(get_db)
+):
+    """
+    标记照片留言已读(§2.15,2026-09-12):
+    - 调用者是 elder → 该照片下全部留言 elder_read_at 置当前时间(幂等)→ 家属端 stats.unreadMessages 实时回落
+    - 非 elder 角色 → code 0 空操作(家属打开详情不影响老人的未读口径)
+    - 照片不存在 → 2001
+    """
+    user = get_current_user(authorization, db)
+    if req.targetType in ("image", "photo"):
+        photo = db.query(Photo).filter(Photo.id == req.targetId).first()
+        if not photo:
+            raise AppException(ERR_NOT_FOUND, "资源不存在")
+    else:
+        photo = None
+    if user.role == "elder" and photo:
+        elder = elder_of_user(db, user)
+        if elder and elder.id == photo.elderly_id:
+            mark_comments_read(db, elder, photo.id)
     return None

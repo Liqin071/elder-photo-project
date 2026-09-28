@@ -15,6 +15,8 @@ class Comment(Base):
     voice_duration = Column(Integer, nullable=True)
     author_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime, server_default=func.now())
+    # 2026-09-12:老人已读回执(家属端"未读留言"角标实时口径用;NULL=未读)
+    elder_read_at = Column(DateTime, nullable=True)
 
     author = relationship("User")
 
