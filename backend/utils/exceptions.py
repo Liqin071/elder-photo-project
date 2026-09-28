@@ -29,4 +29,7 @@ ERR_FILE_TOO_LARGE = 3002       # 超过 20MB
 ERR_UPLOAD_FAILED = 3003        # 上传失败
 ERR_ELDER_NOT_FOUND = 3004      # 老人不存在
 
+# 内容安全(2026-09,UGC 合规;仅 CONTENT_SECURITY=on 时生效)
+ERR_CONTENT_RISKY = 4001        # 内容包含违规信息
+
 ERR_SERVER = 5000               # 服务器内部错误

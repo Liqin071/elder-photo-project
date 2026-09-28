@@ -13,6 +13,7 @@ from utils.permissions import get_db, get_current_user, is_admin, deny, elder_of
 from utils.exceptions import AppException, ERR_NOT_FOUND, ERR_NO_PERMISSION
 from utils.timefmt import fmt_dt
 from utils.notify import notify_comment, cleanup_comment_notifications, mark_comments_read
+from utils.content_security import check_text
 
 router = APIRouter(prefix="/api", tags=["评论"])
 
@@ -120,6 +121,8 @@ def create_comment(
     content = (req.content or "").strip()
     if not content:
         raise AppException(1003, "留言内容不能为空", 400)
+    # UGC 内容安全(方案 B):文字留言过微信 msgSecCheck;开关关闭/网络异常时降级放行
+    check_text(content, openid=user.openid)
     c = Comment(
         target_type=req.targetType,
         target_id=req.targetId,

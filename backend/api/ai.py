@@ -28,6 +28,8 @@ from PIL import Image, ImageEnhance, ImageFilter, ImageOps
 
 from utils.permissions import get_db, get_current_user, require_user, deny
 from utils.exceptions import AppException, ERR_FILE_TYPE, ERR_FILE_TOO_LARGE, ERR_NOT_FOUND, ERR_UPLOAD_FAILED
+from utils.timefmt import now_local
+from utils.content_security import check_image_hook
 
 router = APIRouter(prefix="/api", tags=["AI 修图"])
 
@@ -42,6 +44,26 @@ os.makedirs(AI_DIR, exist_ok=True)
 # 简单限流(单进程内存计数;AI_DAILY_LIMIT=0 关闭)
 _usage = {}
 DAILY_LIMIT = int(os.getenv("AI_DAILY_LIMIT", "20"))
+
+# AI 生成内容标识开关(默认关闭):
+# - 当前默认实现(local)是**确定性图像处理**(曝光/白平衡/色彩/锐化),不属于《人工智能生成合成内容标识办法》
+#   所指的"AI 生成合成内容",故不写标识、不记额外日志(与项目方确认)。
+# - 将来接入**生成式**供应商(如 ark 豆包 SeedEdit、真·黑白上色模型)时,把 AI_CONTENT_MARK 设为 1,
+#   结果图写入隐式标识(EXIF ImageDescription)+ 留存处理日志(服务名/mode/用户/时间)备查。
+CONTENT_MARK = os.getenv("AI_CONTENT_MARK", "0").lower() in ("1", "on", "true", "yes")
+
+
+def _mark_ai_content(jpeg_bytes: bytes, mode: str, provider: str) -> bytes:
+    """写入 AI 生成内容隐式标识(仅 AI_CONTENT_MARK=1 时调用)"""
+    try:
+        img = Image.open(io.BytesIO(jpeg_bytes))
+        exif = img.getexif()
+        exif[0x010E] = f"AI-generated content (mode={mode}, provider={provider})"  # ImageDescription
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=92, exif=exif)
+        return buf.getvalue()
+    except Exception:
+        return jpeg_bytes
 
 
 def _check_quota(user_id):
@@ -208,9 +230,23 @@ async def ai_enhance(
         # 图片损坏/供应商超时/5xx/限流/内容拒绝 → 业务信封(严禁 5xx 透传,前端降级文案依赖它)
         raise AppException(ERR_UPLOAD_FAILED, "AI 修图失败,请稍后重试")
 
+    provider = os.getenv("AI_PROVIDER", "local").lower()
+    if CONTENT_MARK:
+        result = _mark_ai_content(result, mode, provider)
+        # 处理日志留存(合规备查):供应商/mode/用户/时间
+        try:
+            log_path = os.path.join(AI_DIR, "enhance.log")
+            with open(log_path, "a", encoding="utf-8") as f:
+                f.write(f"{now_local()} provider={provider} mode={mode} user={user.id}\n")
+        except Exception:
+            pass
+
     filename = f"{uuid.uuid4().hex}.jpg"
     filepath = os.path.join(AI_DIR, filename)
     with open(filepath, "wb") as f:
         f.write(result)
     base = str(request.base_url).rstrip("/")
-    return {"url": base + f"/uploads/ai/{filename}", "mode": mode}
+    url = base + f"/uploads/ai/{filename}"
+    # UGC 图片审核钩子(AI 结果图同样需要;CONTENT_SECURITY_IMAGE=on 时启用,当前占位不阻断)
+    check_image_hook(url, openid=user.openid)
+    return {"url": url, "mode": mode}

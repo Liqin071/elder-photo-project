@@ -16,6 +16,7 @@ from utils.permissions import get_db, get_current_user, require_user, is_admin, 
 from utils.exceptions import AppException, ERR_FILE_TYPE, ERR_FILE_TOO_LARGE, ERR_ELDER_NOT_FOUND, ERR_NOT_FOUND
 from utils.timefmt import fmt_dt, now_local
 from utils.notify import notify_upload, notify_image_deleted, cleanup_image_notifications
+from utils.content_security import check_image_hook
 
 router = APIRouter(prefix="/api", tags=["照片管理"])
 
@@ -173,6 +174,8 @@ async def upload_photo(
     notify_upload(db, user, elder, photo.id, 1)
 
     result = _photo_to_dict(photo, request, user, db)
+    # UGC 图片审核钩子(异步 mediaCheckAsync;CONTENT_SECURITY_IMAGE=on 时启用,当前占位不阻断)
+    check_image_hook(result.get("url"), openid=user.openid)
     result.pop("canDelete", None)  # 上传响应不含 canDelete(契约 2.6)
     return result
 
