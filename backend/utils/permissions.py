@@ -8,7 +8,7 @@
 - get_elder_relationship:绑定关系显示名,无则 "家人"
 """
 import json
-from fastapi import Header
+from fastapi import Depends, Header
 from sqlalchemy.orm import Session
 
 from models.database import SessionLocal
@@ -42,6 +42,15 @@ def get_current_user(authorization: str, db: Session):
     if user.is_active is False:
         raise AppException(ERR_AUTH_REQUIRED, "账户已被禁用", 401)
     return user
+
+
+def require_user(authorization: str = Header(None), db: Session = Depends(get_db)):
+    """
+    依赖式鉴权(端点写 `user = Depends(require_user)`):依赖在**参数/文件校验之前**执行,
+    因此 multipart 端点(/ai/enhance、/upload)未登录时稳定返回 401,
+    而不是先因缺 file 报 1003(契约与冒烟断言:未登录 → HTTP 401)。
+    """
+    return get_current_user(authorization, db)
 
 
 def is_admin(user):

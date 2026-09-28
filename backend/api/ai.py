@@ -26,7 +26,7 @@ from fastapi import APIRouter, Depends, Header, UploadFile, File, Form, Request
 from sqlalchemy.orm import Session
 from PIL import Image, ImageEnhance, ImageFilter, ImageOps
 
-from utils.permissions import get_db, get_current_user, deny
+from utils.permissions import get_db, get_current_user, require_user, deny
 from utils.exceptions import AppException, ERR_FILE_TYPE, ERR_FILE_TOO_LARGE, ERR_NOT_FOUND, ERR_UPLOAD_FAILED
 
 router = APIRouter(prefix="/api", tags=["AI 修图"])
@@ -178,10 +178,10 @@ async def ai_enhance(
     request: Request,
     file: UploadFile = File(...),
     mode: str = Form("restore"),
-    authorization: str = Header(None),
+    user=Depends(require_user),
     db: Session = Depends(get_db)
 ):
-    user = get_current_user(authorization, db)
+    # 鉴权先于文件/参数校验(未登录一律 401,冒烟断言依赖此语义)
     if user.role == "admin":
         deny()  # 与上传权限对齐:管理端无 AI 修图 UI
     mode = (mode or "restore").strip().lower()

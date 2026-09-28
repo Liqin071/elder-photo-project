@@ -12,7 +12,7 @@ from PIL import Image
 from models.photo import Photo
 from models.comment import Comment
 from models.elderly import Elderly
-from utils.permissions import get_db, get_current_user, is_admin, deny, elder_of_user, check_elder_access
+from utils.permissions import get_db, get_current_user, require_user, is_admin, deny, elder_of_user, check_elder_access
 from utils.exceptions import AppException, ERR_FILE_TYPE, ERR_FILE_TOO_LARGE, ERR_ELDER_NOT_FOUND, ERR_NOT_FOUND
 from utils.timefmt import fmt_dt, now_local
 from utils.notify import notify_upload, notify_image_deleted, cleanup_image_notifications
@@ -111,10 +111,10 @@ async def upload_photo(
     uploaderRole: Optional[str] = Form(None),
     subscribeGranted: Optional[str] = Form(None),
     aiMode: Optional[str] = Form(None),
-    authorization: str = Header(None),
+    user=Depends(require_user),
     db: Session = Depends(get_db)
 ):
-    user = get_current_user(authorization, db)
+    # 鉴权先于文件/参数校验(未登录一律 401)
     if is_admin(user):
         deny()  # 矩阵:admin 无上传权(管理端无上传 UI)
     elder = db.query(Elderly).filter(Elderly.id == elderId).first()
