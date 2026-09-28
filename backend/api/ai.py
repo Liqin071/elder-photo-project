@@ -45,12 +45,11 @@ os.makedirs(AI_DIR, exist_ok=True)
 _usage = {}
 DAILY_LIMIT = int(os.getenv("AI_DAILY_LIMIT", "20"))
 
-# AI 生成内容标识开关(默认关闭):
-# - 当前默认实现(local)是**确定性图像处理**(曝光/白平衡/色彩/锐化),不属于《人工智能生成合成内容标识办法》
-#   所指的"AI 生成合成内容",故不写标识、不记额外日志(与项目方确认)。
-# - 将来接入**生成式**供应商(如 ark 豆包 SeedEdit、真·黑白上色模型)时,把 AI_CONTENT_MARK 设为 1,
-#   结果图写入隐式标识(EXIF ImageDescription)+ 留存处理日志(服务名/mode/用户/时间)备查。
-CONTENT_MARK = os.getenv("AI_CONTENT_MARK", "0").lower() in ("1", "on", "true", "yes")
+# AI 生成内容标识开关(项目方决定:**默认开启**,2026-09 起写入隐式标识)
+# - 写入方式:结果图 EXIF ImageDescription(隐式标识,肉眼不可见,不影响观感)+ 处理日志留存
+# - 与前端"✨ AI 修复/美化"徽标相互独立:那是产品功能提示,这是合规留痕
+# - 如需关闭:环境变量 AI_CONTENT_MARK=0
+CONTENT_MARK = os.getenv("AI_CONTENT_MARK", "1").lower() in ("1", "on", "true", "yes")
 
 
 def _mark_ai_content(jpeg_bytes: bytes, mode: str, provider: str) -> bytes:

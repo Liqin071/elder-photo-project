@@ -7,7 +7,7 @@
 - bind-elder 仅 children 角色可调,支持 relationship,重复绑定友好提示,绑定成功通知老人
 - users/me:资料(phone)+ 改密;志愿者/管理员由管理员端开号(见 api/admin_ops.py)
 """
-from fastapi import APIRouter, Depends, Header
+from fastapi import APIRouter, Depends, Header, Request
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 from typing import Optional
@@ -16,10 +16,11 @@ from models.user import User, UserRole
 from models.elderly import Elderly
 from models.elder_application import ElderApplication
 from utils.auth import get_password_hash, verify_password, create_access_token, verify_token
-from utils.exceptions import AppException, ERR_AUTH_FAILED, ERR_AUTH_REQUIRED, ERR_USERNAME_EXISTS, ERR_PASSWORD_SHORT, ERR_NOT_FOUND, ERR_ACCOUNT_DISABLED
+from utils.exceptions import AppException, ERR_AUTH_FAILED, ERR_AUTH_REQUIRED, ERR_USERNAME_EXISTS, ERR_PASSWORD_SHORT, ERR_NOT_FOUND, ERR_ACCOUNT_DISABLED, ERR_TOO_MANY_ATTEMPTS
 from utils.permissions import get_db, get_current_user, deny, elder_of_user, find_elder_user, add_binding
 from utils.notify import notify_bind_elder
 from utils.timefmt import now_local
+from utils import ratelimit
 import httpx
 import os
 
@@ -134,7 +135,12 @@ def _unique_phone_taken(db, phone, exclude_user_id=None):
 
 # ---------- 登录 / 注册(web 兼容) ----------
 @router.post("/auth/login")
-def login(user: UserLogin, db: Session = Depends(get_db)):
+def login(user: UserLogin, request: Request = None, db: Session = Depends(get_db)):
+    # 防暴力破解:同用户名+IP 连续失败达阈值 → 锁定一段时间(见 utils/ratelimit.py)
+    rl_key = ratelimit.client_key(user.username, request)
+    locked = ratelimit.check_login_allowed(rl_key)
+    if locked > 0:
+        raise AppException(ERR_TOO_MANY_ATTEMPTS, f"登录尝试过于频繁,请 {max(1, locked // 60)} 分钟后再试")
     db_user = db.query(User).filter(User.username == user.username).first()
     if not db_user:
         # 老人端便利:前端注册老人时只收姓名+手机号;后端默认密码 = 手机号。
@@ -144,9 +150,11 @@ def login(user: UserLogin, db: Session = Depends(get_db)):
                 User.phone == user.username, User.role == "elder"
             ).first()
     if not db_user or not verify_password(user.password, db_user.password_hash):
+        ratelimit.record_login_failure(rl_key)
         raise AppException(ERR_AUTH_FAILED, "用户名或密码错误")
     if db_user.is_active is False:
         raise AppException(ERR_ACCOUNT_DISABLED, "账户已被禁用")
+    ratelimit.clear_login_failures(rl_key)
     token = create_access_token(db_user.id, db_user.role)
     db_user.last_login = now_local()
     db.commit()
