@@ -15,6 +15,13 @@ from utils.notify import unread_messages_count
 router = APIRouter(prefix="/api", tags=["志愿者/家属"])
 
 
+# UGC 审核:违规内容(moderation_status='risky')不计入统计与展示
+def _vis(q):
+    return q.filter((Photo.moderation_status.is_(None)) | (Photo.moderation_status != "risky"))
+
+
+
+
 @router.get("/volunteer/elders")
 def volunteer_elders(
     request: Request,
@@ -30,7 +37,7 @@ def volunteer_elders(
     ).all()
     result = []
     for e in elders:
-        last_photo = db.query(Photo).filter(
+        last_photo = _vis(db.query(Photo)).filter(
             Photo.elderly_id == e.id
         ).order_by(Photo.upload_time.desc()).first()
         result.append({
@@ -38,7 +45,7 @@ def volunteer_elders(
             "name": e.name,
             "age": e.age,
             "avatar": e.avatar,
-            "imageCount": len(e.photos) if e.photos else 0,
+            "imageCount": _vis(db.query(Photo)).filter(Photo.elderly_id == e.id).count(),
             "lastUploadAt": fmt_date(last_photo.upload_time) if last_photo else None
         })
     return {"elders": result}
@@ -56,14 +63,14 @@ def family_parents(
     elders = user.parent_elders if user else []
     result = []
     for e in elders:
-        total = db.query(Photo).filter(Photo.elderly_id == e.id).count()
+        total = _vis(db.query(Photo)).filter(Photo.elderly_id == e.id).count()
         now = now_local()
         month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        monthly = db.query(Photo).filter(
+        monthly = _vis(db.query(Photo)).filter(
             Photo.elderly_id == e.id,
             Photo.upload_time >= month_start
         ).count()
-        latest = db.query(Photo).filter(
+        latest = _vis(db.query(Photo)).filter(
             Photo.elderly_id == e.id
         ).order_by(Photo.upload_time.desc()).first()
         result.append({

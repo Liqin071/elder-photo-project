@@ -6,3 +6,5 @@ from .activity import Activity
 from .comment import Comment
 from .notification import Notification
 from .elder_application import ElderApplication
+from .report import ContentReport
+from .media_check import MediaCheckTask

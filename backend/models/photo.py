@@ -18,6 +18,8 @@ class Photo(Base):
     note = Column(Text, nullable=True)
     # 2026-09-12:AI 修图效果(restore/beautify/enhance/colorize;NULL=原图直传),详情页据此展示徽标
     ai_mode = Column(String(20), nullable=True)
+    # UGC 内容安全审核状态:NULL=未审核(审核开关关闭时的常态)/ pending / pass / risky(违规,列表隐藏)
+    moderation_status = Column(String(20), nullable=True)
     file_size = Column(Integer, nullable=True)
     width = Column(Integer, nullable=True)
     height = Column(Integer, nullable=True)

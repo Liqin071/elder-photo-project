@@ -54,6 +54,9 @@ ADDITIVE_ALTERS = [
     ("comments", "ALTER TABLE comments ADD COLUMN IF NOT EXISTS elder_read_at DATETIME NULL"),
     # photos.ai_mode = AI 修图效果(restore/beautify/enhance/colorize;空=原图直传)
     ("photos", "ALTER TABLE photos ADD COLUMN IF NOT EXISTS ai_mode VARCHAR(20) NULL"),
+    # 2026-09 UGC 合规:内容审核状态(NULL=未审核 / pending / pass / risky=违规隐藏)
+    ("photos", "ALTER TABLE photos ADD COLUMN IF NOT EXISTS moderation_status VARCHAR(20) NULL"),
+    ("comments", "ALTER TABLE comments ADD COLUMN IF NOT EXISTS moderation_status VARCHAR(20) NULL"),
 ]
 
 

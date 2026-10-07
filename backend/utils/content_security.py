@@ -87,14 +87,125 @@ def check_text(content: str, openid: str = None, scene: int = SCENE_COMMENT) -> 
     return "pass"
 
 
-def check_image_hook(image_url: str, openid: str = None) -> None:
+def submit_media_check(db, media_url: str, media_type: int, target_type: str,
+                       target_id: int, user_id=None, openid: str = None):
     """
-    图片审核钩子(CONTENT_SECURITY_IMAGE=on 时生效)。
-    实现位置:调用微信 mediaCheckAsync(异步)→ 结果回调接口落库 → 违规图片下架/标记。
-    当前为占位:不阻断任何流程。
+    提交媒体内容异步检测(微信 mediaCheckAsync),并登记 trace_id ↔ 内容 的映射。
+    - media_type:1=音频 2=图片;scene:1=资料 2=评论 3=论坛 4=社交日志
+    - 结果为**异步回调**(POST 到小程序后台「消息推送」配置的 URL,见 api/moderation.py)
+    - 任何失败都**降级放行**(返回 None,不阻断上传),仅记录日志
     """
     if not IMAGE_ENABLED:
         return None
-    # TODO(上线前):调用 https://api.weixin.qq.com/wxa/media_check_async
-    #   并新增回调路由接收 trace_id 结果(wx 会 POST 到配置的 URL),违规时置图片状态为 blocked。
+    token = _access_token()
+    if not token:
+        return None
+    try:
+        with httpx.Client(timeout=8) as client:
+            resp = client.post(
+                f"https://api.weixin.qq.com/wxa/media_check_async?access_token={token}",
+                json={
+                    "media_url": media_url,
+                    "media_type": media_type,
+                    "version": 2,
+                    "scene": SCENE_COMMENT if target_type == "comment" else 4,
+                    "openid": openid or "",
+                },
+            )
+        data = resp.json()
+    except Exception:
+        return None
+    trace_id = data.get("trace_id")
+    if not trace_id:
+        return None
+    from models.media_check import MediaCheckTask
+    task = MediaCheckTask(
+        trace_id=trace_id,
+        target_type=target_type,
+        target_id=target_id,
+        media_type=media_type,
+        user_id=user_id,
+        status="pending",
+    )
+    db.add(task)
+    db.commit()
+    return task
+
+
+def verify_wx_signature(signature: str, timestamp: str, nonce: str) -> bool:
+    """校验微信「消息推送」签名:sha1(sort(token, timestamp, nonce))"""
+    import hashlib
+
+    token = os.getenv("WX_MSG_TOKEN", "")
+    if not token:
+        return True  # 未配置 Token 时不校验(便于联调;上线务必配置)
+    if not (signature and timestamp and nonce):
+        return False
+    raw = "".join(sorted([token, timestamp, nonce]))
+    return hashlib.sha1(raw.encode()).hexdigest() == signature
+
+
+def _suggest_of(payload: dict) -> str:
+    """从回调体取总体结论:risky / review / pass"""
+    result = payload.get("result") or {}
+    suggest = (result.get("suggest") or "").lower()
+    if not suggest:
+        for item in payload.get("detail") or []:
+            s = (item.get("suggest") or "").lower()
+            if s in ("risky", "review"):
+                return s
+            suggest = suggest or s
+    if payload.get("isrisky"):
+        return "risky"
+    return suggest or "pass"
+
+
+def _label_of(payload: dict) -> int:
+    result = payload.get("result") or {}
+    if result.get("label") is not None:
+        return result.get("label")
+    for item in payload.get("detail") or []:
+        if item.get("label") is not None:
+            return item.get("label")
+    return None
+
+
+def apply_media_check_result(db, payload: dict) -> dict:
+    """
+    处理微信 mediaCheckAsync 回调:更新任务状态 + 目标内容的审核状态。
+    违规(risky)→ 目标内容 moderation_status='risky',列表接口自动隐藏。
+    """
+    import json
+    from models.media_check import MediaCheckTask
+    from models.photo import Photo
+    from models.comment import Comment
+    from utils.timefmt import now_local
+
+    trace_id = payload.get("trace_id")
+    if not trace_id:
+        return {"ok": False, "reason": "no trace_id"}
+    task = db.query(MediaCheckTask).filter(MediaCheckTask.trace_id == trace_id).first()
+    if not task:
+        return {"ok": False, "reason": "task not found"}
+    suggest = _suggest_of(payload)
+    label = _label_of(payload)
+    task.suggest = suggest
+    task.label = label
+    task.raw_result = json.dumps(payload, ensure_ascii=False)[:2000]
+    task.checked_at = now_local()
+    task.status = "risky" if suggest == "risky" else ("pass" if suggest == "pass" else suggest)
+    # 同步到目标内容
+    target = None
+    if task.target_type == "image":
+        target = db.query(Photo).filter(Photo.id == task.target_id).first()
+    elif task.target_type == "comment":
+        target = db.query(Comment).filter(Comment.id == task.target_id).first()
+    if target is not None:
+        target.moderation_status = "risky" if suggest == "risky" else "pass"
+    db.commit()
+    return {"ok": True, "status": task.status, "suggest": suggest, "target": f"{task.target_type}:{task.target_id}"}
+
+
+def check_image_hook(image_url: str, openid: str = None) -> None:
+    """兼容旧调用点(同步钩子);异步检测请用 submit_media_check()"""
     return None

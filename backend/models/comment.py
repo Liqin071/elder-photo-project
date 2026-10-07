@@ -17,6 +17,8 @@ class Comment(Base):
     created_at = Column(DateTime, server_default=func.now())
     # 2026-09-12:老人已读回执(家属端"未读留言"角标实时口径用;NULL=未读)
     elder_read_at = Column(DateTime, nullable=True)
+    # UGC 内容安全审核状态:NULL=未审核 / pending / pass / risky(违规,列表隐藏)
+    moderation_status = Column(String(20), nullable=True)
 
     author = relationship("User")
 

@@ -16,12 +16,17 @@ from utils.permissions import get_db, get_current_user, require_user, is_admin, 
 from utils.exceptions import AppException, ERR_FILE_TYPE, ERR_FILE_TOO_LARGE, ERR_ELDER_NOT_FOUND, ERR_NOT_FOUND
 from utils.timefmt import fmt_dt, now_local
 from utils.notify import notify_upload, notify_image_deleted, cleanup_image_notifications
-from utils.content_security import check_image_hook
+from utils.content_security import submit_media_check
+from utils.content_ops import delete_image_with_cascade
 
 router = APIRouter(prefix="/api", tags=["照片管理"])
 
 # AI 修图效果枚举(2026-09-12;2026-09-21 增加 beautify)
 AI_MODES = {"restore", "beautify", "enhance", "colorize"}
+
+# UGC 审核:违规内容(moderation_status='risky')从列表隐藏
+def _visible(query, model):
+    return query.filter((model.moderation_status.is_(None)) | (model.moderation_status != "risky"))
 
 
 class ImageUpdate(BaseModel):
@@ -174,8 +179,11 @@ async def upload_photo(
     notify_upload(db, user, elder, photo.id, 1)
 
     result = _photo_to_dict(photo, request, user, db)
-    # UGC 图片审核钩子(异步 mediaCheckAsync;CONTENT_SECURITY_IMAGE=on 时启用,当前占位不阻断)
-    check_image_hook(result.get("url"), openid=user.openid)
+    # UGC 图片内容安全:提交微信 mediaCheckAsync 异步检测(开关关闭时不提交;结果经回调落库)
+    task = submit_media_check(db, result.get("url"), 2, "image", photo.id, user.id, openid=user.openid)
+    if task:
+        photo.moderation_status = "pending"
+        db.commit()
     result.pop("canDelete", None)  # 上传响应不含 canDelete(契约 2.6)
     return result
 
@@ -194,7 +202,7 @@ def list_images(
 ):
     user = get_current_user(authorization, db)
     eid = _check_image_scope(db, user, elder_id)
-    query = db.query(Photo)
+    query = _visible(db.query(Photo), Photo)  # 违规内容隐藏
     if eid is not None:
         query = query.filter(Photo.elderly_id == eid)
     if year:
@@ -280,34 +288,6 @@ def delete_image(
             deny()
     else:
         deny()
-    elder = p.elderly
-    # ① 级联删除该照片下所有留言(语音文件一并清理)
-    comments = db.query(Comment).filter(
-        Comment.target_type.in_(("image", "photo")),
-        Comment.target_id == image_id,
-    ).all()
-    for c in comments:
-        if c.voice_url:
-            vp = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), c.voice_url.lstrip("/"))
-            if os.path.exists(vp):
-                try:
-                    os.remove(vp)
-                except Exception:
-                    pass
-        db.delete(c)
-    db.commit()
-    # ② 清理所有引用该照片的通知(含已读:照片已不存在,通知即死链)
-    cleanup_image_notifications(db, image_id)
-    # ③ 文件落盘清理
-    filepath = os.path.join(UPLOAD_DIR, p.original_path)
-    if os.path.exists(filepath):
-        os.remove(filepath)
-    if p.thumbnail_path:
-        thumb_path = os.path.join(UPLOAD_DIR, p.thumbnail_path)
-        if os.path.exists(thumb_path):
-            os.remove(thumb_path)
-    db.delete(p)
-    db.commit()
-    # ④ 按通知矩阵写 system 删除通知(metadata 不带 imageId)
-    notify_image_deleted(db, user, elder)
+    # 三件套级联删除(与举报处置共用同一实现,保证行为一致)
+    delete_image_with_cascade(db, p, user)
     return None

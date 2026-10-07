@@ -97,6 +97,8 @@ from api.admin_ops import router as admin_ops_router
 app.include_router(admin_ops_router)
 from api.ai import router as ai_router
 app.include_router(ai_router)
+from api.moderation import router as moderation_router
+app.include_router(moderation_router)
 
 UPLOAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)

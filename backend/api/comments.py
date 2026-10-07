@@ -13,7 +13,8 @@ from utils.permissions import get_db, get_current_user, is_admin, deny, elder_of
 from utils.exceptions import AppException, ERR_NOT_FOUND, ERR_NO_PERMISSION
 from utils.timefmt import fmt_dt
 from utils.notify import notify_comment, cleanup_comment_notifications, mark_comments_read
-from utils.content_security import check_text
+from utils.content_security import check_text, submit_media_check
+from utils.content_ops import delete_comment_with_cascade
 
 router = APIRouter(prefix="/api", tags=["评论"])
 
@@ -95,7 +96,9 @@ def list_comments(
     _check_target_access(db, user, photo)
     q = db.query(Comment).filter(
         Comment.target_type == target_type,
-        Comment.target_id == target_id
+        Comment.target_id == target_id,
+        # UGC 审核:违规留言隐藏
+        (Comment.moderation_status.is_(None)) | (Comment.moderation_status != "risky"),
     ).order_by(Comment.created_at.asc())
     total = q.count()
     comments = q.offset((page - 1) * page_size).limit(page_size).all()
@@ -179,6 +182,12 @@ async def create_voice_comment(
     # 通知矩阵(§2.11):语音留言同样写通知(摘要为 [语音留言])
     if photo and photo.elderly:
         notify_comment(db, user, photo.elderly, photo.id, c.id, "voice", "")
+    # UGC 音频内容安全:提交 mediaCheckAsync(media_type=1)异步检测
+    base = str(request.base_url).rstrip("/")
+    task = submit_media_check(db, base + f"/uploads/voices/{filename}", 1, "comment", c.id, user.id, openid=user.openid)
+    if task:
+        c.moderation_status = "pending"
+        db.commit()
     return _comment_to_dict(c, request, user)
 
 
@@ -194,14 +203,8 @@ def delete_comment(
         raise AppException(ERR_NOT_FOUND, "不存在", 404)
     if c.author_id != user.id:
         raise AppException(ERR_NO_PERMISSION, "无权限操作", 403)
-    if c.voice_url:
-        vp = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), c.voice_url.lstrip("/"))
-        if os.path.exists(vp):
-            os.remove(vp)
-    db.delete(c)
-    db.commit()
-    # 级联清理(§2.10 硬契约):删除该留言生成的**未读**通知(所有接收人,metadata.commentId 命中)
-    cleanup_comment_notifications(db, comment_id)
+    # 级联:语音文件 + 该留言的未读通知(与举报处置共用同一实现)
+    delete_comment_with_cascade(db, c)
     return None
 
 

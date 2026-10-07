@@ -11,6 +11,16 @@ from utils.timefmt import fmt_dt, fmt_date
 
 router = APIRouter(prefix="/api", tags=["时间线"])
 
+# UGC 审核:违规内容(moderation_status='risky')隐藏
+def _vis_photo(q):
+    return q.filter((Photo.moderation_status.is_(None)) | (Photo.moderation_status != "risky"))
+
+
+def _vis_comment(q):
+    return q.filter((Comment.moderation_status.is_(None)) | (Comment.moderation_status != "risky"))
+
+
+
 
 def _build_full_url(request, path):
     if not path:
@@ -52,13 +62,13 @@ def timeline_years(
     rows = db.query(
         func.year(Photo.upload_time).label("year"),
         func.count(Photo.id).label("cnt")
-    ).filter(Photo.elderly_id == eid).group_by(
+    ).filter(Photo.elderly_id == eid, (Photo.moderation_status.is_(None)) | (Photo.moderation_status != "risky")).group_by(
         func.year(Photo.upload_time)
     ).order_by(func.year(Photo.upload_time).desc()).all()
     years = []
     for r in rows:
         # 封面取该年最新一张(与 mock 一致)
-        cover = db.query(Photo).filter(
+        cover = _vis_photo(db.query(Photo)).filter(
             Photo.elderly_id == eid,
             func.year(Photo.upload_time) == r.year
         ).order_by(Photo.upload_time.desc()).first()
@@ -82,7 +92,7 @@ def timeline_aggregation(
     eid = _resolve_elder_id(db, user, elder_id)
     months = []
     for m in range(1, 13):
-        q = db.query(Photo).filter(
+        q = _vis_photo(db.query(Photo)).filter(
             Photo.elderly_id == eid,
             func.year(Photo.upload_time) == year,
             func.month(Photo.upload_time) == m
@@ -115,7 +125,7 @@ def timeline(
     user = get_current_user(authorization, db)
     eid = _resolve_elder_id(db, user, elder_id)
 
-    photos = db.query(Photo).filter(Photo.elderly_id == eid).order_by(Photo.upload_time.desc()).all()
+    photos = _vis_photo(db.query(Photo)).filter(Photo.elderly_id == eid).order_by(Photo.upload_time.desc()).all()
     if year:
         photos = [p for p in photos if p.upload_time and p.upload_time.year == year]
 
@@ -158,7 +168,7 @@ def timeline(
     # 留言事件:该老人名下照片的全部文字留言(语音不进时间轴,契约 2.4)
     if photos:
         photo_ids = [p.id for p in photos]
-        comments = db.query(Comment).filter(
+        comments = _vis_comment(db.query(Comment)).filter(
             Comment.target_type.in_(("image", "photo")),
             Comment.target_id.in_(photo_ids),
             Comment.content_type == "text",
