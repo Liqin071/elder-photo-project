@@ -24,7 +24,7 @@ from datetime import date
 
 from fastapi import APIRouter, Depends, Header, UploadFile, File, Form, Request
 from sqlalchemy.orm import Session
-from PIL import Image, ImageEnhance, ImageFilter, ImageOps
+from PIL import Image, ImageEnhance, ImageFilter, ImageOps, ImageStat
 
 from utils.permissions import get_db, get_current_user, require_user, deny
 from utils.exceptions import AppException, ERR_FILE_TYPE, ERR_FILE_TOO_LARGE, ERR_NOT_FOUND, ERR_UPLOAD_FAILED
@@ -114,15 +114,23 @@ def _process_local(contents: bytes, mode: str) -> bytes:
 # ---------------- 百度智能云「图像增强与特效」(AI_PROVIDER=baidu) ----------------
 # 密钥:BAIDU_API_KEY + BAIDU_SECRET_KEY(控制台 → 应用列表 → API Key / Secret Key)
 # 鉴权:先用 API Key + Secret Key 换 access_token(有效期 30 天,内存缓存,失效自动重取)
-# 说明:百度这套接口无"美化/老照片修复"同名接口,故按能力映射 mode(可用环境变量覆盖):
-#   BAIDU_EP_RESTORE / BAIDU_EP_BEAUTIFY / BAIDU_EP_ENHANCE / BAIDU_EP_COLORIZE
-#   支持用英文逗号串联多个接口做组合处理,如 BAIDU_EP_RESTORE=image_quality_enhance,contrast_enhance
+#
+# 能力映射(2026-09 按产品语义重定义;**支持逗号串联多能力组合处理,按顺序依次调用**):
+#   老照片修复 restore : 图像清晰度增强(修复模糊/恢复细节) → 黑白上色(仅黑白照自动触发)
+#                        → 图像色彩增强 → 图像对比度增强
+#   照片美化 beautify  : 图像色彩增强 → 图像对比度增强
+#   画质增强 enhance   : 图像清晰度增强
+#   黑白上色 colorize  : 黑白图像上色
+# 可用环境变量覆盖(BAIDU_EP_<MODE>),见 部署说明.md。
+# 特殊标记 `colourize:auto` = 仅当图片接近黑白时才执行上色(避免把彩色照片改色)。
 BAIDU_DEFAULT_EP = {
-    "restore": "image_quality_enhance",   # 老照片:清晰化(去模糊/提升细节)
-    "beautify": "contrast_enhance",       # 美化:去灰增层次,观感提升
-    "enhance": "image_quality_enhance",   # 画质增强:清晰度
-    "colorize": "colourize",              # 黑白上色
+    "restore": "image_quality_enhance,colourize:auto,color_enhance,contrast_enhance",
+    "beautify": "color_enhance,contrast_enhance",
+    "enhance": "image_quality_enhance",
+    "colorize": "colourize",
 }
+# 灰度判定阈值(HSV 饱和度均值低于该值视为黑白照片 → 触发自动上色);可用 BAIDU_GRAY_THRESHOLD 覆盖
+GRAY_THRESHOLD = int(os.getenv("BAIDU_GRAY_THRESHOLD", "28"))
 _baidu_token = {"token": None, "expire": 0}
 # 百度错误码 → 用户可读提示
 BAIDU_ERR_MSG = {
@@ -205,25 +213,68 @@ def _baidu_call(endpoint: str, token: str, image_b64: str) -> bytes:
     raise AppException(ERR_UPLOAD_FAILED, BAIDU_ERR_MSG.get(code, "AI 修图失败,请稍后重试"))
 
 
+def _is_grayscale(img) -> bool:
+    """判断是否接近黑白照片(HSV 饱和度均值低于阈值)"""
+    try:
+        hsv = img.convert("HSV")
+        if isinstance(hsv, list):
+            hsv = hsv[0]
+        # 小图采样,避免大图逐个像素统计太慢
+        small = hsv.resize((120, 120)) if hasattr(hsv, "resize") else hsv
+        sat = ImageStat.Stat(small).mean[1]
+        return sat < GRAY_THRESHOLD
+    except Exception:
+        return False
+
+
 def _process_baidu(contents: bytes, mode: str) -> bytes:
-    """百度智能云图像增强与特效;支持一个 mode 串联多个接口(用逗号分隔)"""
+    """
+    百度智能云图像增强与特效:按 BAIDU_EP_<MODE> 顺序**串联多个能力**依次处理。
+    - `colourize:auto` 表示"仅当图片接近黑白时才上色"(避免把彩色照片改色)
+    - 单步失败不整单失败:跳过该步继续后续步骤;全部失败才抛业务错误
+    """
+    import base64
+    import logging
+
     ep_env = f"BAIDU_EP_{mode.upper()}"
     chain = os.getenv(ep_env) or BAIDU_DEFAULT_EP.get(mode, "image_quality_enhance")
-    endpoints = [e.strip() for e in chain.split(",") if e.strip()]
-    image_b64 = _baidu_prepare(contents)
-    result = None
-    for ep in endpoints:
+    steps = [e.strip() for e in chain.split(",") if e.strip()]
+
+    image_bytes = _normalize_jpeg(contents)
+    gray_cache = None
+    ok_steps, last_error = 0, None
+
+    for step in steps:
+        ep = step
+        if step.endswith(":auto"):
+            ep = step.split(":", 1)[0]
+            if gray_cache is None:
+                gray_cache = _is_grayscale(Image.open(io.BytesIO(image_bytes)))
+            if not gray_cache:
+                logging.info("[ai] 跳过 %s(图片非黑白,无需上色)", ep)
+                continue
+        b64 = base64.b64encode(image_bytes).decode()
+        out = None
         for attempt in (1, 2):
             try:
-                result = _baidu_call(ep, _baidu_access_token(), image_b64)
+                out = _baidu_call(ep, _baidu_access_token(), b64)
                 break
             except AppException as exc:
-                # token 失效重取一次;其他错误直接上抛
-                if attempt == 1 and _baidu_token["token"] is None:
-                    continue
-                raise exc
-        image_b64 = __import__("base64").b64encode(result).decode()
-    return _normalize_jpeg(result)
+                _baidu_token_failed = _baidu_token["token"] is None
+                if attempt == 1 and _baidu_token_failed:
+                    continue  # token 失效已清缓存 → 重取再试一次
+                last_error = exc
+                logging.warning("[ai] 步骤 %s 失败,跳过: %s", ep, getattr(exc, "detail", exc))
+                break
+        if out:
+            image_bytes = _normalize_jpeg(out)
+            ok_steps += 1
+
+    if ok_steps == 0:
+        if last_error:
+            raise last_error
+        raise AppException(ERR_UPLOAD_FAILED, "AI 修图失败,请稍后重试")
+    return image_bytes
 
 
 # ---------------- 远程供应商(占位实现:配了密钥即可用) ----------------
