@@ -185,6 +185,41 @@ def handle_report(
     return None
 
 
+@router.get("/admin/ai-config")
+def ai_config(
+    authorization: str = Header(None),
+    db: Session = Depends(get_db)
+):
+    """
+    管理员诊断:查看当前生效的 AI 修图配置(供应商、各 mode 处理链路、开关状态)。
+    用途:确认 .env 改动是否已生效(改完必须 systemctl restart elder-photo)。
+    """
+    import os
+    from api.ai import BAIDU_DEFAULT_EP, GRAY_THRESHOLD
+    user = get_current_user(authorization, db)
+    if not is_admin(user):
+        deny()
+    chains = {}
+    for mode in ("restore", "beautify", "enhance", "colorize"):
+        chains[mode] = os.getenv(f"BAIDU_EP_{mode.upper()}") or BAIDU_DEFAULT_EP.get(mode)
+    return {
+        "provider": os.getenv("AI_PROVIDER", "local"),
+        "providerConfigured": bool(
+            os.getenv("BAIDU_API_KEY") and os.getenv("BAIDU_SECRET_KEY")
+        ) if os.getenv("AI_PROVIDER", "local") == "baidu" else bool(os.getenv("ARK_API_KEY")),
+        "dailyLimit": int(os.getenv("AI_DAILY_LIMIT", "20")),
+        "contentMark": os.getenv("AI_CONTENT_MARK", "1"),
+        "grayThreshold": GRAY_THRESHOLD,
+        "chains": chains,
+        "chainsFromEnv": [m for m in chains if os.getenv(f"BAIDU_EP_{m.upper()}")],
+        "contentSecurity": {
+            "text": os.getenv("CONTENT_SECURITY", "off"),
+            "image": os.getenv("CONTENT_SECURITY_IMAGE", "off"),
+            "msgTokenConfigured": bool(os.getenv("WX_MSG_TOKEN")),
+        },
+    }
+
+
 # ---------------- 管理员:内容审核结果 ----------------
 @router.get("/admin/moderation")
 def list_moderation(
