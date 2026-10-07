@@ -10,8 +10,8 @@
 4. mode 白名单:restore 老照片修复 / beautify 照片美化 / enhance 画质增强 / colorize 黑白上色
 
 供应商策略:由环境变量 AI_PROVIDER 决定,前端零感知(只依赖本端点契约)。
-- local(默认):用 Pillow 做本地增强处理 —— 无需任何密钥即可跑通全链路与验收;
-  效果是"确定性图像增强",非生成式修复,适合联调/演示。
+- baidu:百度智能云「图像增强与特效」(需 BAIDU_API_KEY + BAIDU_SECRET_KEY)
+- local:用 Pillow 做本地增强处理 —— 无需任何密钥即可跑通全链路与验收
 - ark:火山方舟 豆包 SeedEdit 图片编辑(需 ARK_API_KEY,可选 ARK_MODEL/ARK_ENDPOINT)
 - volcengine:火山引擎视觉智能专项能力(需 VOLC_AK/VOLC_SK,按 Action 对接)
 未配置密钥时返回业务失败(前端自动降级原图上传,不阻断主流程)。
@@ -111,6 +111,121 @@ def _process_local(contents: bytes, mode: str) -> bytes:
     return buf.getvalue()
 
 
+# ---------------- 百度智能云「图像增强与特效」(AI_PROVIDER=baidu) ----------------
+# 密钥:BAIDU_API_KEY + BAIDU_SECRET_KEY(控制台 → 应用列表 → API Key / Secret Key)
+# 鉴权:先用 API Key + Secret Key 换 access_token(有效期 30 天,内存缓存,失效自动重取)
+# 说明:百度这套接口无"美化/老照片修复"同名接口,故按能力映射 mode(可用环境变量覆盖):
+#   BAIDU_EP_RESTORE / BAIDU_EP_BEAUTIFY / BAIDU_EP_ENHANCE / BAIDU_EP_COLORIZE
+#   支持用英文逗号串联多个接口做组合处理,如 BAIDU_EP_RESTORE=image_quality_enhance,contrast_enhance
+BAIDU_DEFAULT_EP = {
+    "restore": "image_quality_enhance",   # 老照片:清晰化(去模糊/提升细节)
+    "beautify": "contrast_enhance",       # 美化:去灰增层次,观感提升
+    "enhance": "image_quality_enhance",   # 画质增强:清晰度
+    "colorize": "colourize",              # 黑白上色
+}
+_baidu_token = {"token": None, "expire": 0}
+# 百度错误码 → 用户可读提示
+BAIDU_ERR_MSG = {
+    "4": "AI 修图服务繁忙,请稍后重试",
+    "6": "AI 修图服务未开通相应能力,请联系管理员",
+    "17": "今日 AI 修图额度已用完,请明天再试",
+    "18": "AI 修图请求过于频繁,请稍后重试",
+    "19": "AI 修图请求过于频繁,请稍后重试",
+    "216630": "图片格式或尺寸不符合要求",
+    "216631": "图片过大,请压缩后重试",
+    "282810": "图片内容不合规,请更换照片",
+}
+
+
+def _baidu_access_token():
+    import time
+    import httpx
+
+    now = time.time()
+    if _baidu_token["token"] and _baidu_token["expire"] > now:
+        return _baidu_token["token"]
+    api_key = os.getenv("BAIDU_API_KEY", "")
+    secret_key = os.getenv("BAIDU_SECRET_KEY", "")
+    if not api_key or not secret_key:
+        raise AppException(ERR_UPLOAD_FAILED, "AI 修图服务未配置")
+    with httpx.Client(timeout=15) as client:
+        resp = client.post(
+            "https://aip.baidubce.com/oauth/2.0/token",
+            params={"grant_type": "client_credentials", "client_id": api_key, "client_secret": secret_key},
+        )
+    data = resp.json()
+    if not data.get("access_token"):
+        raise AppException(ERR_UPLOAD_FAILED, "AI 修图失败,请稍后重试")
+    _baidu_token["token"] = data["access_token"]
+    _baidu_token["expire"] = now + int(data.get("expires_in", 2592000)) - 600
+    return _baidu_token["token"]
+
+
+def _baidu_prepare(contents: bytes) -> str:
+    """按百度要求预处理:输出等比缩放后的 JPEG(最长边≤4096、最短边≥50)再 base64"""
+    import base64
+
+    img = Image.open(io.BytesIO(contents))
+    img = ImageOps.exif_transpose(img).convert("RGB")
+    w, h = img.size
+    if min(w, h) < 50:
+        raise AppException(ERR_UPLOAD_FAILED, "图片太小,请更换更清晰的照片")
+    longest = max(w, h)
+    if longest > 4096:
+        ratio = 4096.0 / longest
+        img = img.resize((int(w * ratio), int(h * ratio)), Image.LANCZOS)
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=90)
+    return base64.b64encode(buf.getvalue()).decode()
+
+
+def _baidu_call(endpoint: str, token: str, image_b64: str) -> bytes:
+    """调用单个百度能力接口,返回结果图片字节"""
+    import base64
+    import httpx
+
+    url = f"https://aip.baidubce.com/rest/2.0/image-process/v1/{endpoint}?access_token={token}"
+    try:
+        with httpx.Client(timeout=55) as client:
+            resp = client.post(
+                url,
+                data={"image": image_b64},
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+            )
+        data = resp.json()
+    except Exception:
+        raise AppException(ERR_UPLOAD_FAILED, "AI 修图失败,请稍后重试")
+    if "image" in data:
+        return base64.b64decode(data["image"])
+    code = str(data.get("error_code", ""))
+    if code in ("110", "111"):  # token 失效 → 清缓存,由上层重试一次
+        _baidu_token["token"] = None
+        _baidu_token["expire"] = 0
+        raise AppException(ERR_UPLOAD_FAILED, "AI 修图失败,请稍后重试")
+    raise AppException(ERR_UPLOAD_FAILED, BAIDU_ERR_MSG.get(code, "AI 修图失败,请稍后重试"))
+
+
+def _process_baidu(contents: bytes, mode: str) -> bytes:
+    """百度智能云图像增强与特效;支持一个 mode 串联多个接口(用逗号分隔)"""
+    ep_env = f"BAIDU_EP_{mode.upper()}"
+    chain = os.getenv(ep_env) or BAIDU_DEFAULT_EP.get(mode, "image_quality_enhance")
+    endpoints = [e.strip() for e in chain.split(",") if e.strip()]
+    image_b64 = _baidu_prepare(contents)
+    result = None
+    for ep in endpoints:
+        for attempt in (1, 2):
+            try:
+                result = _baidu_call(ep, _baidu_access_token(), image_b64)
+                break
+            except AppException as exc:
+                # token 失效重取一次;其他错误直接上抛
+                if attempt == 1 and _baidu_token["token"] is None:
+                    continue
+                raise exc
+        image_b64 = __import__("base64").b64encode(result).decode()
+    return _normalize_jpeg(result)
+
+
 # ---------------- 远程供应商(占位实现:配了密钥即可用) ----------------
 def _process_ark(contents: bytes, mode: str) -> bytes:
     """火山方舟 豆包 SeedEdit 图片编辑(一个接口通吃四 mode,prompt 区分)"""
@@ -172,6 +287,8 @@ def _normalize_jpeg(contents: bytes) -> bytes:
 
 def _process(contents: bytes, mode: str) -> bytes:
     provider = os.getenv("AI_PROVIDER", "local").lower()
+    if provider == "baidu":
+        return _process_baidu(contents, mode)
     if provider == "ark":
         return _process_ark(contents, mode)
     if provider == "volcengine":
